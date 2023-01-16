@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #define FOREACH_KEYWORD_TYPE(KEYWORD_TYPE)           \
         KEYWORD_TYPE(AUTO, "auto")              \
@@ -22,6 +23,8 @@
         KEYWORD_TYPE(DO, "do")                  \
         KEYWORD_TYPE(ELSE, "else")              \
         KEYWORD_TYPE(IF, "if")                  \
+
+#define KEYWORD_TYPE_COUNT 19
 
 #define FOREACH_PUNCTUATOR_TYPE(PUNCTUATOR_TYPE)        \
         PUNCTUATOR_TYPE(LPAREN, "(")          \
@@ -45,25 +48,25 @@
 #define GENERATE_ENUM(ENUM, TEXT) ENUM,
 #define GENERATE_STRING(ENUM, TEXT) TEXT,
 
-enum KeywordTypeEnum {
+typedef enum KeywordTypeEnum {
     FOREACH_KEYWORD_TYPE(GENERATE_ENUM)
-} typedef KeywordType;
+} KeywordType;
 
-enum PunctuatorTypeEnum {
+typedef enum PunctuatorTypeEnum {
     FOREACH_PUNCTUATOR_TYPE(GENERATE_ENUM)
-} typedef PunctuatorType;
+} PunctuatorType;
 
-enum TokenTypeEnum {KEYWORD, ID, LITERAL, PUNCTUATOR} typedef TokenType;
+typedef enum TokenTypeEnum {KEYWORD, ID, LITERAL, PUNCTUATOR} TokenType;
 
-struct PunctuatorStruct {
+typedef struct PunctuatorStruct {
     PunctuatorType type;
-} typedef Punctuator;
+} Punctuator;
 
-struct KeywordStruct {
+typedef struct KeywordStruct {
     KeywordType type;
-} typedef Keyword;
+} Keyword;
 
-struct TokenStruct {
+typedef struct TokenStruct {
     TokenType type;
     char* text;
     union
@@ -71,14 +74,93 @@ struct TokenStruct {
         Keyword keyword;
         Punctuator punctuator;
     };
-} typedef Token;
+} Token;
 
-Token get_next_token(FILE* ptr) {
+static const char* keyword_strings[] = {
+    FOREACH_KEYWORD_TYPE(GENERATE_STRING)
+};
+static const int keyword_enums[] = {
+    FOREACH_KEYWORD_TYPE(GENERATE_ENUM)
+};
+
+void skip_whitespace(FILE* fptr) {
     int ch;
     do {
-        ch = fgetc(ptr);
-        // stuff
+        ch = fgetc(fptr);
+    } while (isspace(ch));
+    ungetc(ch, fptr);
+}
+
+char* get_id_or_keyword(FILE* fptr) {
+    char* str = NULL;
+    size_t size = 0, len = 0;
+    int ch;
+    while (isalpha((ch=fgetc(fptr))) || ch == '_') {
+        if (len + 1 >= size) {
+            size = size * 2 + 1;
+            str = realloc(str, sizeof(char)*size);
+        }
+        str[len++] = ch;
+    }
+    if (str != NULL) str[len] = '\0';
+    ungetc(ch, fptr);
+    return str;
+}
+
+int is_part_of_keyword(int* cptr, FILE* fptr) {
+    return isalpha((*cptr=fgetc(fptr))) || *cptr == '_';
+}
+char* get_token_value(FILE* fptr, int (*cond)(int*,FILE*)) {
+    char* str = NULL;
+    size_t size = 0, len = 0;
+    int ch;
+    while ((*cond)(&ch,fptr)) {
+        if (len + 1 >= size) {
+            size = size * 2 + 1;
+            str = realloc(str, sizeof(char)*size);
+        }
+        str[len++] = ch;
+    }
+    if (str != NULL) str[len] = '\0';
+    ungetc(ch, fptr);
+    return str;
+}
+
+int find_string(const char* strings[], size_t size, char* string) {
+    for (int i = 0; i < size; ++i) {
+        if (strcmp(strings[i], string) == 0) return i;
+    }
+    return -1;
+}
+
+Token* get_next_token(FILE* fptr) {
+    int ch;
+    do {
+        ch = fgetc(fptr);
+        ungetc(ch, fptr);
+
+        if (isspace(ch)) skip_whitespace(fptr);
+        else if (isalpha(ch) || ch == '_') {
+            char* value = get_token_value(fptr, is_part_of_keyword);
+            int index = find_string(keyword_strings, KEYWORD_TYPE_COUNT, value);
+            if (index > -1) {
+                // create keyword token
+                Token* token = malloc(sizeof(Token));
+                token->type = KEYWORD;
+                token->text = value;
+                Keyword keyword_obj = { keyword_enums[index] };
+                token->keyword = keyword_obj;
+                return token;
+            } else {
+                // create identifier token
+                Token* token = malloc(sizeof(Token));
+                token->type = ID;
+                token->text = value;
+                return token;
+            }
+        }
     } while (ch != EOF);
+    return NULL;
 }
 
 int main(int argc, char* argv[])
@@ -88,16 +170,18 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    FILE* ptr = fopen(argv[1], "r");
+    FILE* fptr = fopen(argv[1], "r");
 
-    if (ptr == NULL) {
+    if (fptr == NULL) {
         printf("file can't be opened \n");
         return 1;
     }
 
-    char ch;
-    do {
-        ch = fgetc(ptr);
-        // stuff
-    } while (ch != EOF);
+    Token* token;
+    while ((token = get_next_token(fptr))) {
+        int token_subtype = -1;
+        if (token->type == KEYWORD) token_subtype = token->keyword.type;
+        else if (token->type == PUNCTUATOR) token_subtype = token->punctuator.type;
+        printf("TOKEN(type=%d, subtype=%d, text='%s')\n", token->type, token_subtype, token->text);
+    }
 }
