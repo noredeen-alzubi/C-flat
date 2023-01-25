@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdio.h>
 #include "token_trie.h"
 
 TokenTrieNode* build_token_trie(char* strings[], int subtypes[], size_t count, TokenType type) {
@@ -24,6 +25,7 @@ TokenTrieNode* build_token_trie(char* strings[], int subtypes[], size_t count, T
         if (type == KEYWORD) token->keyword_type = subtypes[i];
         else if (type == PUNCTUATOR) token->punctuator_type = subtypes[i];
         else exit(1);
+        curr->token = token;
     }
 
     return root;

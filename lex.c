@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 #include "token_trie.h"
 
 char* keyword_strings[] = {
@@ -71,17 +72,18 @@ int is_part_of_keyword(int* cptr, FILE* fptr) {
 //     return str;
 // }
 
-void get_rest_of_ID(FILE* fptr, char* rest) {
+void get_rest_of_ID(FILE* fptr, char** rest) {
     int ch;
     size_t size = 0, len = 0;
     while(isalnum(ch=fgetc(fptr)) || ch == '_') {
         if (len + 1 >= size) {
             size = size * 2 + 1;
-            rest = realloc(rest, sizeof(char) * size);
+            *rest = realloc(*rest, sizeof(char) * size);
         }
-        rest[len++] = ch;
+        (*rest)[len++] = ch;
     }
-    if (rest != NULL) rest[len] = '\0';
+    if (*rest != NULL) (*rest)[len] = '\0';
+    else
     ungetc(ch, fptr);
 }
 
@@ -92,27 +94,31 @@ void get_rest_of_ID(FILE* fptr, char* rest) {
 //     return -1;
 // }
 
-Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char* scanned) {
+Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char** scanned) {
     int ch;
     size_t size = 0, len = 0;
     TokenTrieNode* curr = keyword_trie_root;
     while(1) {
         ch = fgetc(fptr);
-        if (ch == EOF || !curr->children[ch]) {
+
+        if (len + 1 >= size) {
+            size = size * 2 + 1;
+            *scanned = realloc(*scanned, sizeof(char) * size);
+        }
+
+        if (ch == EOF || !curr || !curr->children[ch]) {
             ungetc(ch, fptr);
             break;
         }
 
-        if (len + 1 >= size) {
-            size = size * 2 + 1;
-            scanned = realloc(scanned, sizeof(char) * size);
-        }
-        scanned[len++] = ch;
+        (*scanned)[len++] = ch;
+        printf("ch: %c, curr: %c\n", ch, curr->ch);
         curr = curr->children[ch];
     }
-    if (scanned != NULL) scanned[len] = '\0';
+    if (*scanned != NULL) (*scanned)[len] = '\0';
 
-    return curr->token;
+    printf("scanned: %s\n", *scanned);
+    return curr ? curr->token : NULL;
 }
 
 Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
@@ -120,17 +126,24 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
     int ch;
     do {
         ch = fgetc(fptr);
+        printf("-> curr ch: '%c'\n", ch);
         ungetc(ch, fptr);
 
         if (isspace(ch)) skip_whitespace(fptr);
         else if (isalpha(ch) || ch == '_') {
-            char* scanned;
-            Token* keyword_token = get_keyword_token(fptr, keyword_trie, scanned);
+            char* scanned = NULL;
+            Token* keyword_token = get_keyword_token(fptr, keyword_trie, &scanned);
             if (!keyword_token) {
                 // create identifier token
-                char* rest_of_id;
-                get_rest_of_ID(fptr, rest_of_id);
-                scanned = realloc(scanned, sizeof(char) * (strlen(rest_of_id)+strlen(scanned)+1));
+                char* rest_of_id = NULL;
+                get_rest_of_ID(fptr, &rest_of_id);
+
+                int new_size = 0;
+                if (scanned) new_size += strlen(scanned);
+                if (rest_of_id) new_size += strlen(rest_of_id);
+
+                printf("rest of ID: %s\n", rest_of_id);
+                scanned = realloc(scanned, sizeof(char) * new_size);
                 strcat(scanned, rest_of_id);
                 Token* token = malloc(sizeof(Token));
                 token->type = ID;
@@ -149,7 +162,6 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
 
 int main(int argc, char* argv[])
 {
-    // TODO
     TokenTrieNode* keyword_trie = build_token_trie(keyword_strings, keyword_enums, KEYWORD_TYPE_COUNT, KEYWORD);
     if (argc < 2) {
         printf("missing argument: file \n");
@@ -168,6 +180,6 @@ int main(int argc, char* argv[])
         int token_subtype = -1;
         if (token->type == KEYWORD) token_subtype = token->keyword_type;
         else if (token->type == PUNCTUATOR) token_subtype = token->punctuator_type;
-        printf("TOKEN(type=%d, subtype=%d, text='%s')\n", token->type, token_subtype, token->text);
+        printf("---\nSCANNED: TOKEN(type=%d, subtype=%d, text='%s')\n---\n", token->type, token_subtype, token->text);
     }
 }
