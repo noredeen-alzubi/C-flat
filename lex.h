@@ -58,7 +58,11 @@ typedef enum {
     FOREACH_PUNCTUATOR_TYPE(GENERATE_ENUM)
 } PunctuatorType;
 
-typedef enum {KEYWORD, ID, LITERAL, PUNCTUATOR} TokenType;
+typedef enum {
+    DECIMAL_INT, DECIMAL_FLOAT, HEX_INT, HEX_FLOAT, OCTAL_INT, ENUMERATION, CHARAC
+} ConstantType;
+
+typedef enum {KEYWORD, ID, LITERAL, PUNCTUATOR, CONSTANT} TokenType;
 
 typedef struct Punctuator Punctuator;
 struct Punctuator {
@@ -78,6 +82,7 @@ struct Token {
     {
         KeywordType keyword_type;
         PunctuatorType punctuator_type;
+        ConstantType constant_type;
     };
 };
 

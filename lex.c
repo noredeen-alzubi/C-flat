@@ -102,6 +102,53 @@ Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char** sc
     return curr ? curr->token : NULL;
 }
 
+Token* get_int_or_decimal_constant(FILE* fptr) {
+    // assume: ch0 is a digit
+    int ch0 = fgetc(fptr);
+    int ch1 = fgetc(fptr);
+
+    if (ch0 == '0' && (ch1 == 'x' || ch1 == 'X')) {
+        // hex
+    }
+    else if (ch0 == '0') {
+        // octal
+    }
+    else {
+        // decimal
+    }
+
+    Token* result = NULL;
+    return result;
+}
+
+Token* get_char_constant(FILE* fptr) {}
+
+// SO: when scanning IDs, do NOT touch L,u,U with ' after!!!
+// actually: first try to grab constants
+// if we fail to grab u'<c-char>', then we can grab 'u' as an ID, '\'' as a punct, '<c-char>' as id
+Token* attempt_grab_constant(FILE* fptr) {
+    Token* result = NULL;
+    int ch0 = fgetc(fptr);
+    if (ch0 == EOF) {
+        ungetc(ch0, fptr);
+        return NULL;
+    }
+
+    int ch1 = fgetc(fptr);
+    ungetc(ch1, fptr);
+    ungetc(ch0, fptr);
+
+    if (isdigit(ch0)) get_int_or_decimal_constant(fptr);
+    else if (
+        (ch0 == '\'') ||
+        ((ch0 == 'L' || ch0 == 'u' || ch0 == 'U') && ch1 == '\'')
+    ) {
+        get_char_constant(fptr);
+    }
+
+    return result;
+}
+
 Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
     Token* result = NULL;
     char* temp;
@@ -112,6 +159,8 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
         // printf("-> curr ch: '%c'\n", ch);
 
         if (isspace(ch)) skip_whitespace(fptr);
+        else if ((result = attempt_grab_constant(fptr))) { break; }
+        else if ((result = attempt_grab_punctuator(fptr))) { break; }
         else if (is_keyword_begin_char(ch)) {
             char* scanned = NULL;
 
@@ -139,7 +188,6 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
             result = token;
             break;
         }
-        else if ((result = attempt_grab_punctuator(fptr))) { break; }
     } while (ch != EOF);
 
     return result;
@@ -149,14 +197,14 @@ int main(int argc, char* argv[])
 {
     TokenTrieNode* keyword_trie = build_token_trie(keyword_strings, keyword_enums, KEYWORD_TYPE_COUNT, KEYWORD);
     if (argc < 2) {
-        printf("missing argument: file \n");
+        printf("missing argument: file\n");
         return 1;
     }
 
     FILE* fptr = fopen(argv[1], "r");
 
     if (fptr == NULL) {
-        printf("file can't be opened \n");
+        printf("file can't be opened\n");
         return 1;
     }
 
