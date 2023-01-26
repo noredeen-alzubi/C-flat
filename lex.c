@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+#include "lex.h"
 #include "token_trie.h"
 
 char* keyword_strings[] = {
@@ -12,6 +13,15 @@ int keyword_enums[] = {
     FOREACH_KEYWORD_TYPE(GENERATE_ENUM)
 };
 
+char* punctuator_strings[] = {
+    FOREACH_PUNCTUATOR_TYPE(GENERATE_STRING)
+};
+int punctuator_enums[] = {
+    FOREACH_PUNCTUATOR_TYPE(GENERATE_ENUM)
+};
+
+int is_keyword_begin_char(int ch) { return (isalpha(ch) || ch == '_'); }
+
 void skip_whitespace(FILE* fptr) {
     int ch;
     do {
@@ -20,57 +30,35 @@ void skip_whitespace(FILE* fptr) {
     ungetc(ch, fptr);
 }
 
-char* get_punctuator(FILE* fptr) {
-    char* str = NULL;
-    size_t size = 0, len = 0;
-    int ch;
-    while (isalpha((ch=fgetc(fptr))) || ch == '_') {
-        if (len + 1 >= size) {
-            size = size * 2 + 1;
-            str = realloc(str, sizeof(char)*size);
-        }
-        str[len++] = ch;
+// TODO: make this function nicer
+// We assume all C punctuators have size <= 2
+Token* attempt_grab_punctuator(FILE* fptr) {
+    int ch0 = fgetc(fptr);
+    if (ch0 == EOF) {
+        ungetc(ch0, fptr);
+        return NULL;
     }
-    if (str != NULL) str[len] = '\0';
-    ungetc(ch, fptr);
-    return str;
+
+    int ch1 = fgetc(fptr);
+    for (int i = 0; i < PUNCTUATOR_TYPE_COUNT; ++i) {
+        if (ch0 == punctuator_strings[i][0]) {
+            Token* t = NULL;
+            if (punctuator_strings[i][1] == '\0' || ch1 == punctuator_strings[i][1]) {
+                t = malloc(sizeof(Token));
+                t->type = PUNCTUATOR;
+                t->text = punctuator_strings[i];
+                t->punctuator_type = punctuator_enums[i];
+                if (punctuator_strings[i][1] == '\0') ungetc(ch1, fptr);
+                return t;
+            }
+
+            if (punctuator_strings[i][1] == '\0') ungetc(ch1, fptr);
+        }
+    }
+    ungetc(ch1, fptr);
+    ungetc(ch0, fptr);
+    return NULL;
 }
-
-// char* get_id_or_keyword(FILE* fptr) {
-//     char* str = NULL;
-//     size_t size = 0, len = 0;
-//     int ch;
-//     while (isalpha((ch=fgetc(fptr))) || ch == '_') {
-//         if (len + 1 >= size) {
-//             size = size * 2 + 1;
-//             str = realloc(str, sizeof(char)*size);
-//         }
-//         str[len++] = ch;
-//     }
-//     if (str != NULL) str[len] = '\0';
-//     ungetc(ch, fptr);
-//     return str;
-// }
-
-int is_part_of_keyword(int* cptr, FILE* fptr) {
-    return isalpha((*cptr=fgetc(fptr))) || *cptr == '_';
-}
-
-// char* get_token_value(FILE* fptr, int (*cond)(int*,FILE*)) {
-//     char* str = NULL;
-//     size_t size = 0, len = 0;
-//     int ch;
-//     while ((*cond)(&ch,fptr)) {
-//         if (len + 1 >= size) {
-//             size = size * 2 + 1;
-//             str = realloc(str, sizeof(char)*size);
-//         }
-//         str[len++] = ch;
-//     }
-//     if (str != NULL) str[len] = '\0';
-//     ungetc(ch, fptr);
-//     return str;
-// }
 
 void get_rest_of_ID(FILE* fptr, char** rest) {
     int ch;
@@ -83,16 +71,8 @@ void get_rest_of_ID(FILE* fptr, char** rest) {
         (*rest)[len++] = ch;
     }
     if (*rest != NULL) (*rest)[len] = '\0';
-    else
     ungetc(ch, fptr);
 }
-
-// int find_string(const char* strings[], size_t size, char* string) {
-//     for (int i = 0; i < size; ++i) {
-//         if (strcmp(strings[i], string) == 0) return i;
-//     }
-//     return -1;
-// }
 
 Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char** scanned) {
     int ch;
@@ -112,49 +92,54 @@ Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char** sc
         }
 
         (*scanned)[len++] = ch;
-        printf("ch: %c, curr: %c\n", ch, curr->ch);
+        // printf("ch: %c, curr: %c\n", ch, curr->ch);
         curr = curr->children[ch];
     }
     if (*scanned != NULL) (*scanned)[len] = '\0';
 
-    printf("scanned: %s\n", *scanned);
+    // printf("scanned: %s\n", *scanned);
+    // TODO: return deep copy of token?
     return curr ? curr->token : NULL;
 }
 
 Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
     Token* result = NULL;
+    char* temp;
     int ch;
     do {
         ch = fgetc(fptr);
-        printf("-> curr ch: '%c'\n", ch);
         ungetc(ch, fptr);
+        // printf("-> curr ch: '%c'\n", ch);
 
         if (isspace(ch)) skip_whitespace(fptr);
-        else if (isalpha(ch) || ch == '_') {
+        else if (is_keyword_begin_char(ch)) {
             char* scanned = NULL;
+
             Token* keyword_token = get_keyword_token(fptr, keyword_trie, &scanned);
-            if (!keyword_token) {
-                // create identifier token
-                char* rest_of_id = NULL;
-                get_rest_of_ID(fptr, &rest_of_id);
-
-                int new_size = 0;
-                if (scanned) new_size += strlen(scanned);
-                if (rest_of_id) new_size += strlen(rest_of_id);
-
-                printf("rest of ID: %s\n", rest_of_id);
-                scanned = realloc(scanned, sizeof(char) * new_size);
-                strcat(scanned, rest_of_id);
-                Token* token = malloc(sizeof(Token));
-                token->type = ID;
-                token->text = scanned;
-                result = token;
-                break;
-            } else {
+            if (keyword_token) {
                 result = keyword_token;
                 break;
             }
+
+            // create identifier token
+            char* rest_of_id = NULL;
+            get_rest_of_ID(fptr, &rest_of_id);
+
+            // TODO: need these?
+            int new_size = 0;
+            if (scanned) new_size += strlen(scanned);
+            if (rest_of_id) new_size += strlen(rest_of_id);
+
+            // printf("rest of ID: %s\n", rest_of_id);
+            scanned = realloc(scanned, sizeof(char) * new_size);
+            strcat(scanned, rest_of_id);
+            Token* token = malloc(sizeof(Token));
+            token->type = ID;
+            token->text = scanned;
+            result = token;
+            break;
         }
+        else if ((result = attempt_grab_punctuator(fptr))) { break; }
     } while (ch != EOF);
 
     return result;

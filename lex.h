@@ -24,7 +24,13 @@
 
 #define KEYWORD_TYPE_COUNT 19
 
+// multi-char punctuators come first in the list
 #define FOREACH_PUNCTUATOR_TYPE(PUNCTUATOR_TYPE)        \
+        PUNCTUATOR_TYPE(DEREF, "->")          \
+        PUNCTUATOR_TYPE(LNOTEQ, "!=")         \
+        PUNCTUATOR_TYPE(INC, "+=")            \
+        PUNCTUATOR_TYPE(DEC, "-=")            \
+        PUNCTUATOR_TYPE(SEMICOLON, ";")       \
         PUNCTUATOR_TYPE(LPAREN, "(")          \
         PUNCTUATOR_TYPE(RPAREN, ")")          \
         PUNCTUATOR_TYPE(LBRACE, "{")          \
@@ -32,16 +38,14 @@
         PUNCTUATOR_TYPE(LBRACKET, "[")        \
         PUNCTUATOR_TYPE(RBRACKET, "]")        \
         PUNCTUATOR_TYPE(DOT, ".")             \
-        PUNCTUATOR_TYPE(DEREF, "->")          \
-        PUNCTUATOR_TYPE(INC, "+=")            \
-        PUNCTUATOR_TYPE(DEC, "-=")            \
         PUNCTUATOR_TYPE(ADDR, "&")            \
         PUNCTUATOR_TYPE(STAR, "*")            \
         PUNCTUATOR_TYPE(PLUS, "+")            \
         PUNCTUATOR_TYPE(MINUS, "-")           \
         PUNCTUATOR_TYPE(BNOT, "~")            \
         PUNCTUATOR_TYPE(LNOT, "!")            \
-        PUNCTUATOR_TYPE(LNOTEQ, "!=")         \
+
+#define PUNCTUATOR_TYPE_COUNT 18
 
 #define GENERATE_ENUM(ENUM, TEXT) ENUM,
 #define GENERATE_STRING(ENUM, TEXT) TEXT,
