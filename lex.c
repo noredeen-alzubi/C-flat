@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+#include <errno.h>
 #include "lex.h"
 #include "token_trie.h"
 
@@ -32,7 +33,7 @@ void skip_whitespace(FILE* fptr) {
 
 // TODO: make this function nicer
 // We assume all C punctuators have size <= 2
-Token* attempt_grab_punctuator(FILE* fptr) {
+Token* scan_punctuator(FILE* fptr) {
     int ch0 = fgetc(fptr);
     if (ch0 == EOF) {
         ungetc(ch0, fptr);
@@ -103,6 +104,8 @@ Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char** sc
 }
 
 Token* get_int_or_decimal_constant(FILE* fptr) {
+    Token* result = NULL;
+
     // assume: ch0 is a digit
     int ch0 = fgetc(fptr);
     int ch1 = fgetc(fptr);
@@ -117,16 +120,106 @@ Token* get_int_or_decimal_constant(FILE* fptr) {
         // decimal
     }
 
-    Token* result = NULL;
     return result;
 }
 
-Token* get_char_constant(FILE* fptr) {}
+void put_back(FILE* fptr, char scanned[], size_t len) {
+    for (int i = len - 1; i >= 0; i--) ungetc(scanned[i], fptr);
+}
+
+Token* get_escape_sequence(char scanned[], size_t len) {
+    Token* result = NULL;
+
+    char ch = scanned[2];
+    if (scanned[0] == 'L' || scanned[0] == 'u' || scanned[0] == 'U') {
+        ch = scanned[3];
+    }
+
+    if (ch == 'x') {
+        // hex
+    } else if (ch == 'u') {
+        // universal character name
+    } else if (isdigit(ch)) {
+        // octal
+    } else if (ch != '\'' &&
+        ch == '"'  ||
+        ch == '?'  ||
+        ch == '\\' ||
+        ch == 'a'  ||
+        ch == 'b'  ||
+        ch == 'n'  ||
+        ch == 'r'  ||
+        ch == 't'  ||
+        ch == 'v'  ||
+        ch == 'f') {
+        // simple escape sequence
+    } else {
+        // invalid escape sequence
+        fprintf(stderr, "Err: invalid escape sequence\n");
+        exit(1);
+    }
+
+    return result;
+}
+
+Token* get_non_escaped_charac(char scanned[], size_t len) {
+    char ch = scanned[len - 3];
+    if (ch == '\'' || ch == '\\' || ch == '\n') {
+        return NULL;
+    }
+    size_t charac_bytes = scanned[0] == '\'' ? len - 1 : len - 2;
+    if (charac_bytes > 4) {
+        // warn: charac constant too long for its type
+    }
+    // do work
+    Token* result = malloc(sizeof(Token));
+    result->type = CONSTANT;
+    result->constant_type = CHARAC;
+    result->text = scanned;
+
+    return result;
+}
+
+Token* get_charac_constant(FILE* fptr) {
+    // assume ch0 = L | u | U | ', ch1
+    // only looks for closing ' until \n or EOF (or \r?)
+    // for numerical escape sequences, range is 0-255
+    // hex: \xFF
+    // octal: \377
+    int ch;
+    Token* result = NULL;
+    char* scanned = malloc(8 * sizeof(char));
+    size_t len = 0;
+
+    if ((ch = fgetc(fptr)) == 'L' || ch == 'u' || ch == 'U') {
+        scanned[len++] = ch;
+        ch = fgetc(fptr); // read the opening '
+        scanned[len++] = ch;
+    }
+
+    // look for closing '
+    while ((ch = fgetc(fptr)) != '\'') {
+        if (ch == EOF || ch == '\n') {
+            fprintf(stderr, "Err: missing closing '\n");
+            exit(1);
+        }
+        scanned[len++] = ch;
+    }
+    scanned[len++] = '\'';
+
+    if (scanned[1] == '\\' && len > 4) {
+        result = get_escape_sequence(scanned, len);
+    } else {
+        result = get_non_escaped_charac(scanned, len);
+    }
+
+    return result;
+}
 
 // SO: when scanning IDs, do NOT touch L,u,U with ' after!!!
 // actually: first try to grab constants
 // if we fail to grab u'<c-char>', then we can grab 'u' as an ID, '\'' as a punct, '<c-char>' as id
-Token* attempt_grab_constant(FILE* fptr) {
+Token* scan_constant(FILE* fptr) {
     Token* result = NULL;
     int ch0 = fgetc(fptr);
     if (ch0 == EOF) {
@@ -143,10 +236,37 @@ Token* attempt_grab_constant(FILE* fptr) {
         (ch0 == '\'') ||
         ((ch0 == 'L' || ch0 == 'u' || ch0 == 'U') && ch1 == '\'')
     ) {
-        get_char_constant(fptr);
+        get_charac_constant(fptr);
     }
 
     return result;
+}
+
+Token* scan_token_or_id(FILE* fptr, TokenTrieNode* keyword_trie) {
+    char ch;
+    char* scanned = NULL;
+    if (!is_keyword_begin_char((ch = fgetc(fptr)))) return NULL;
+
+
+    Token* keyword_token = get_keyword_token(fptr, keyword_trie, &scanned);
+    if (keyword_token) return keyword_token;
+
+    // create identifier token
+    char* rest_of_id = NULL;
+    get_rest_of_ID(fptr, &rest_of_id);
+
+    // TODO: need these?
+    int new_size = 0;
+    if (scanned) new_size += strlen(scanned);
+    if (rest_of_id) new_size += strlen(rest_of_id);
+
+    // printf("rest of ID: %s\n", rest_of_id);
+    scanned = realloc(scanned, sizeof(char) * new_size);
+    strcat(scanned, rest_of_id);
+    Token* token = malloc(sizeof(Token));
+    token->type = ID;
+    token->text = scanned;
+    return token;
 }
 
 Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
@@ -159,35 +279,36 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
         // printf("-> curr ch: '%c'\n", ch);
 
         if (isspace(ch)) skip_whitespace(fptr);
-        else if ((result = attempt_grab_constant(fptr))) { break; }
-        else if ((result = attempt_grab_punctuator(fptr))) { break; }
-        else if (is_keyword_begin_char(ch)) {
-            char* scanned = NULL;
+        else if ((result = scan_constant(fptr))) { break; }
+        else if ((result = scan_punctuator(fptr))) { break; }
+        else if ((result = scan_token_or_id(fptr, keyword_trie))) { break; }
+        // else if (is_keyword_begin_char(ch)) {
+        //     char* scanned = NULL;
 
-            Token* keyword_token = get_keyword_token(fptr, keyword_trie, &scanned);
-            if (keyword_token) {
-                result = keyword_token;
-                break;
-            }
+        //     Token* keyword_token = get_keyword_token(fptr, keyword_trie, &scanned);
+        //     if (keyword_token) {
+        //         result = keyword_token;
+        //         break;
+        //     }
 
-            // create identifier token
-            char* rest_of_id = NULL;
-            get_rest_of_ID(fptr, &rest_of_id);
+        //     // create identifier token
+        //     char* rest_of_id = NULL;
+        //     get_rest_of_ID(fptr, &rest_of_id);
 
-            // TODO: need these?
-            int new_size = 0;
-            if (scanned) new_size += strlen(scanned);
-            if (rest_of_id) new_size += strlen(rest_of_id);
+        //     // TODO: need these?
+        //     int new_size = 0;
+        //     if (scanned) new_size += strlen(scanned);
+        //     if (rest_of_id) new_size += strlen(rest_of_id);
 
-            // printf("rest of ID: %s\n", rest_of_id);
-            scanned = realloc(scanned, sizeof(char) * new_size);
-            strcat(scanned, rest_of_id);
-            Token* token = malloc(sizeof(Token));
-            token->type = ID;
-            token->text = scanned;
-            result = token;
-            break;
-        }
+        //     // printf("rest of ID: %s\n", rest_of_id);
+        //     scanned = realloc(scanned, sizeof(char) * new_size);
+        //     strcat(scanned, rest_of_id);
+        //     Token* token = malloc(sizeof(Token));
+        //     token->type = ID;
+        //     token->text = scanned;
+        //     result = token;
+        //     break;
+        // }
     } while (ch != EOF);
 
     return result;
