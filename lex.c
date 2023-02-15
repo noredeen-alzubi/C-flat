@@ -21,7 +21,10 @@ int punctuator_enums[] = {
     FOREACH_PUNCTUATOR_TYPE(GENERATE_ENUM)
 };
 
-int is_keyword_begin_char(int ch) { return (isalpha(ch) || ch == '_'); }
+int fpeek(FILE* fp) {
+    const int c = getc(fp);
+    return c == EOF ? EOF : ungetc(c, fp);
+}
 
 void skip_whitespace(FILE* fptr) {
     int ch;
@@ -82,14 +85,14 @@ Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char** sc
     while(1) {
         ch = fgetc(fptr);
 
-        if (len + 1 >= size) {
-            size = size * 2 + 1;
-            *scanned = realloc(*scanned, sizeof(char) * size);
-        }
-
         if (ch == EOF || !curr || !curr->children[ch]) {
             ungetc(ch, fptr);
             break;
+        }
+
+        if (len + 1 >= size) {
+            size = size * 2 + 1;
+            *scanned = realloc(*scanned, sizeof(char) * size);
         }
 
         (*scanned)[len++] = ch;
@@ -242,11 +245,13 @@ Token* scan_constant(FILE* fptr) {
     return result;
 }
 
-Token* scan_token_or_id(FILE* fptr, TokenTrieNode* keyword_trie) {
-    char ch;
+Token* scan_keyword_or_id(FILE* fptr, TokenTrieNode* keyword_trie) {
+    char ch = fpeek(fptr);
     char* scanned = NULL;
-    if (!is_keyword_begin_char((ch = fgetc(fptr)))) return NULL;
 
+    if (!isalpha(ch) && ch != '_') {
+        return NULL;
+    }
 
     Token* keyword_token = get_keyword_token(fptr, keyword_trie, &scanned);
     if (keyword_token) return keyword_token;
@@ -274,41 +279,13 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
     char* temp;
     int ch;
     do {
-        ch = fgetc(fptr);
-        ungetc(ch, fptr);
+        ch = fpeek(fptr);
         // printf("-> curr ch: '%c'\n", ch);
 
         if (isspace(ch)) skip_whitespace(fptr);
         else if ((result = scan_constant(fptr))) { break; }
         else if ((result = scan_punctuator(fptr))) { break; }
-        else if ((result = scan_token_or_id(fptr, keyword_trie))) { break; }
-        // else if (is_keyword_begin_char(ch)) {
-        //     char* scanned = NULL;
-
-        //     Token* keyword_token = get_keyword_token(fptr, keyword_trie, &scanned);
-        //     if (keyword_token) {
-        //         result = keyword_token;
-        //         break;
-        //     }
-
-        //     // create identifier token
-        //     char* rest_of_id = NULL;
-        //     get_rest_of_ID(fptr, &rest_of_id);
-
-        //     // TODO: need these?
-        //     int new_size = 0;
-        //     if (scanned) new_size += strlen(scanned);
-        //     if (rest_of_id) new_size += strlen(rest_of_id);
-
-        //     // printf("rest of ID: %s\n", rest_of_id);
-        //     scanned = realloc(scanned, sizeof(char) * new_size);
-        //     strcat(scanned, rest_of_id);
-        //     Token* token = malloc(sizeof(Token));
-        //     token->type = ID;
-        //     token->text = scanned;
-        //     result = token;
-        //     break;
-        // }
+        else if ((result = scan_keyword_or_id(fptr, keyword_trie))) { break; }
     } while (ch != EOF);
 
     return result;

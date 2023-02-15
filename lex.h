@@ -24,12 +24,14 @@
 
 #define KEYWORD_TYPE_COUNT 19
 
-// multi-char punctuators come first in the list
+// IMPORTANT: multi-char punctuators come first in the list
 #define FOREACH_PUNCTUATOR_TYPE(PUNCTUATOR_TYPE)        \
         PUNCTUATOR_TYPE(DEREF, "->")          \
         PUNCTUATOR_TYPE(LNOTEQ, "!=")         \
         PUNCTUATOR_TYPE(INC, "+=")            \
         PUNCTUATOR_TYPE(DEC, "-=")            \
+        PUNCTUATOR_TYPE(INC_ONE, "++")            \
+        PUNCTUATOR_TYPE(DEC_ONE, "--")            \
         PUNCTUATOR_TYPE(SEMICOLON, ";")       \
         PUNCTUATOR_TYPE(LPAREN, "(")          \
         PUNCTUATOR_TYPE(RPAREN, ")")          \
