@@ -156,8 +156,6 @@ Token* get_escape_sequence(char scanned[], char* raw_ch_start, size_t raw_ch_len
             fprintf(stderr, "err: hex char out of range");
             exit(1);
         }
-        printf("num str: %s\n", number);
-        printf("num int: %li\n", l_num);
         result = malloc(sizeof(Token));
         result->type = CONSTANT;
         result->constant_type = CHARAC;
@@ -166,7 +164,7 @@ Token* get_escape_sequence(char scanned[], char* raw_ch_start, size_t raw_ch_len
     } else if (isdigit(*raw_ch_start)) {
         // octal
         long int l_num = strtol(number, NULL, 8);
-        if (errno == ERANGE || l_num > CHAR_MAX || l_num < CHAR_MIN) {
+        if (errno == ERANGE || l_num > UCHAR_MAX || l_num < CHAR_MIN) {
             fprintf(stderr, "err: octal char out of range");
             exit(1);
         }
