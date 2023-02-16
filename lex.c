@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include "lex.h"
 #include "token_trie.h"
 
@@ -106,7 +107,7 @@ Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char** sc
     return curr ? curr->token : NULL;
 }
 
-Token* get_int_or_decimal_constant(FILE* fptr) {
+Token* get_numerical_constant(FILE* fptr) {
     Token* result = NULL;
 
     // assume: ch0 is a digit
@@ -126,40 +127,48 @@ Token* get_int_or_decimal_constant(FILE* fptr) {
     return result;
 }
 
-void put_back(FILE* fptr, char scanned[], size_t len) {
+void put_back_str(FILE* fptr, char scanned[], size_t len) {
     for (int i = len - 1; i >= 0; i--) ungetc(scanned[i], fptr);
 }
 
-Token* get_escape_sequence(char scanned[], size_t len) {
+// For now, wide characters are not supported
+Token* get_escape_sequence(char scanned[], char* raw_ch_start, size_t raw_ch_len, char size_modifier) {
+    // scanned = L'\ ... ' OR '\ ...'
     Token* result = NULL;
+    char* number = strndup(raw_ch_start, raw_ch_len);
 
-    char ch = scanned[2];
-    if (scanned[0] == 'L' || scanned[0] == 'u' || scanned[0] == 'U') {
-        ch = scanned[3];
-    }
-
-    if (ch == 'x') {
+    if (*raw_ch_start == 'x') {
         // hex
-    } else if (ch == 'u') {
-        // universal character name
-    } else if (isdigit(ch)) {
+        long int l_num = strtol(number, NULL, 16);
+        if (errno == ERANGE || l_num > CHAR_MAX || l_num < CHAR_MIN) {
+            fprintf(stderr, "err: hex char out of range");
+            exit(1);
+        }
+        // TODO create token
+    } else if (isdigit(*raw_ch_start)) {
         // octal
-    } else if (ch != '\'' &&
-        ch == '"'  ||
-        ch == '?'  ||
-        ch == '\\' ||
-        ch == 'a'  ||
-        ch == 'b'  ||
-        ch == 'n'  ||
-        ch == 'r'  ||
-        ch == 't'  ||
-        ch == 'v'  ||
-        ch == 'f') {
-        // simple escape sequence
+        long int l_num = strtol(number, NULL, 8);
+        if (errno == ERANGE || l_num > CHAR_MAX || l_num < CHAR_MIN) {
+            fprintf(stderr, "err: octal char out of range");
+            exit(1);
+        }
+        // TODO create token
+    } else if (*raw_ch_start == 'u') {
+        // universal character name
+        fprintf(stderr, "unimplemented: universal character name\n");
+        exit(2);
     } else {
-        // invalid escape sequence
-        fprintf(stderr, "Err: invalid escape sequence\n");
-        exit(1);
+        switch (*raw_ch_start) {
+            case '"':  case '?':  case '\\':
+            case 'a':  case 'b':  case 'n':
+            case 'r':  case 't':  case 'v':  case 'f':
+                // stuff
+                break;
+            default:
+                // invalid escape sequence
+                fprintf(stderr, "err: invalid escape sequence\n");
+                exit(1);
+        }
     }
 
     return result;
@@ -184,34 +193,55 @@ Token* get_non_escaped_charac(char scanned[], size_t len) {
 }
 
 Token* get_charac_constant(FILE* fptr) {
-    // assume ch0 = L | u | U | ', ch1
-    // only looks for closing ' until \n or EOF (or \r?)
+    // assume ch0 = l | u | u | ', ch1
+    // only looks for closing ' until \n or eof (or \r?)
     // for numerical escape sequences, range is 0-255
-    // hex: \xFF
+    // hex: \xff
     // octal: \377
     int ch;
     Token* result = NULL;
+
     char* scanned = malloc(8 * sizeof(char));
     size_t len = 0;
 
-    if ((ch = fgetc(fptr)) == 'L' || ch == 'u' || ch == 'U') {
-        scanned[len++] = ch;
+    // Assume unescaped and no size modifier
+    char* raw_ch_start = scanned + 1;
+    char* raw_ch_end;
+    char size_modifier = '\0';
+    int escaped = 0;
+
+    ch = fgetc(fptr);
+    // TODO: check EOF
+    scanned[len++] = ch;
+    if (ch == 'l' || ch == 'L' || ch == 'u' || ch == 'u') {
+        size_modifier = ch;
+        raw_ch_start++;
+
         ch = fgetc(fptr); // read the opening '
         scanned[len++] = ch;
+    }
+
+    ch = fgetc(fptr);
+    // TODO: check EOF
+    scanned[len++] = ch;
+    if (ch == '\\') {
+        raw_ch_start++;
     }
 
     // look for closing '
     while ((ch = fgetc(fptr)) != '\'') {
         if (ch == EOF || ch == '\n') {
-            fprintf(stderr, "Err: missing closing '\n");
+            fprintf(stderr, "err: missing closing '\n");
             exit(1);
         }
         scanned[len++] = ch;
     }
+    raw_ch_end = scanned + len - 1;
     scanned[len++] = '\'';
+    scanned[len++] = '\0';
 
     if (scanned[1] == '\\' && len > 4) {
-        result = get_escape_sequence(scanned, len);
+        result = get_escape_sequence(scanned, raw_ch_start, raw_ch_end-raw_ch_start, size_modifier);
     } else {
         result = get_non_escaped_charac(scanned, len);
     }
@@ -219,27 +249,20 @@ Token* get_charac_constant(FILE* fptr) {
     return result;
 }
 
-// SO: when scanning IDs, do NOT touch L,u,U with ' after!!!
-// actually: first try to grab constants
-// if we fail to grab u'<c-char>', then we can grab 'u' as an ID, '\'' as a punct, '<c-char>' as id
+// NOTE: if we fail to grab u'<c-char>', then we can grab 'u' as an ID, '\'' as a punct, '<c-char>' as id
 Token* scan_constant(FILE* fptr) {
     Token* result = NULL;
-    int ch0 = fgetc(fptr);
-    if (ch0 == EOF) {
-        ungetc(ch0, fptr);
-        return NULL;
-    }
 
-    int ch1 = fgetc(fptr);
-    ungetc(ch1, fptr);
-    ungetc(ch0, fptr);
+    int ch0 = fpeek(fptr);
+    if (ch0 == EOF) return NULL;
+    int ch1 = fpeek(fptr);
 
-    if (isdigit(ch0)) get_int_or_decimal_constant(fptr);
+    if (isdigit(ch0)) get_numerical_constant(fptr);
     else if (
         (ch0 == '\'') ||
         ((ch0 == 'L' || ch0 == 'u' || ch0 == 'U') && ch1 == '\'')
     ) {
-        get_charac_constant(fptr);
+        result = get_charac_constant(fptr);
     }
 
     return result;

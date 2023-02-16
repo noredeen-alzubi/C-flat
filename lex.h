@@ -66,20 +66,11 @@ typedef enum {
 
 typedef enum {KEYWORD, ID, LITERAL, PUNCTUATOR, CONSTANT} TokenType;
 
-typedef struct Punctuator Punctuator;
-struct Punctuator {
-    PunctuatorType type;
-};
-
-typedef struct Keyword Keyword;
-struct Keyword {
-    KeywordType type;
-};
-
 typedef struct Token Token;
 struct Token {
     TokenType type;
     char* text;
+    void* value;
     union
     {
         KeywordType keyword_type;
