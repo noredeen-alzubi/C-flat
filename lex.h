@@ -1,6 +1,8 @@
 #ifndef LEX_H
 #define LEX_H
 
+#include <stdint.h>
+
 #define FOREACH_KEYWORD_TYPE(KEYWORD_TYPE)           \
         KEYWORD_TYPE(AUTO, "auto")              \
         KEYWORD_TYPE(BREAK, "break")            \
@@ -43,6 +45,7 @@
         PUNCTUATOR_TYPE(ADDR, "&")            \
         PUNCTUATOR_TYPE(STAR, "*")            \
         PUNCTUATOR_TYPE(PLUS, "+")            \
+        PUNCTUATOR_TYPE(EQ, "=")            \
         PUNCTUATOR_TYPE(MINUS, "-")           \
         PUNCTUATOR_TYPE(BNOT, "~")            \
         PUNCTUATOR_TYPE(LNOT, "!")            \
@@ -70,7 +73,8 @@ typedef struct Token Token;
 struct Token {
     TokenType type;
     char* text;
-    void* value;
+    int64_t i_value;
+    long double f_value;
     union
     {
         KeywordType keyword_type;
