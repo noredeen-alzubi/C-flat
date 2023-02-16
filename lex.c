@@ -119,22 +119,67 @@ Token* get_keyword_token(FILE* fptr, TokenTrieNode* keyword_trie_root, char** sc
     return curr ? curr->token : NULL;
 }
 
-Token* get_numerical_constant(FILE* fptr) {
+// TODO: floating point?
+Token* scan_numerical_constant(FILE* fptr) {
     Token* result = NULL;
 
     // assume: ch0 is a digit
     int ch0 = fgetc(fptr);
     int ch1 = fgetc(fptr);
+    int base;
+    ConstantType type;
 
+    char* scanned = malloc(3);
+    size_t size = 3, len = 0;
+
+    // we dont ungetc() ch0 and ch1 in this case so we discard the 0x prefix
     if (ch0 == '0' && (ch1 == 'x' || ch1 == 'X')) {
-        // hex
-    }
-    else if (ch0 == '0') {
-        // octal
+        base = 16;
+        type = HEX_INT;
+        scanned[0] = ch0;
+        scanned[1] = ch1;
+        len = 2;
     }
     else {
-        // decimal
+        if (ch0 == '0') {
+            base = 8;
+            type = OCTAL_INT;
+        }
+        else {
+            base = 10;
+            type = DECIMAL_INT;
+        }
+        ungetc(ch1, fptr);
+        ungetc(ch0, fptr);
     }
+
+    while((ch0 = fgetc(fptr)) >= '0' && ch0 <= '9' ||
+            (base > 10 && ch0 >= 'A' && ch0 <= ('A'+base-10))) {
+        if (len + 2 >= size) {
+            size = size * 2 + 1;
+            scanned = realloc(scanned, sizeof(char) * size);
+        }
+        scanned[len++] = ch0;
+    }
+    scanned[len++] = '\0';
+    ungetc(ch0, fptr);
+
+    if (type == HEX_INT && len < 4) {
+        fprintf(stderr, "err: missing hex digits from integer literal\n");
+        exit(1);
+    }
+
+    int64_t l_num = strtoul(type == HEX_INT ? scanned+2 : scanned, NULL, base);
+    if (errno == ERANGE || l_num > ULONG_MAX) {
+        fprintf(stderr, "err: integer literal is too big\n");
+        exit(1);
+    }
+
+    result = malloc(sizeof(Token));
+    result->type = CONSTANT;
+    result->constant_type = type;
+    result->i_value = l_num;
+    result->text = scanned;
 
     return result;
 }
@@ -144,7 +189,7 @@ void put_back_str(FILE* fptr, char scanned[], size_t len) {
 }
 
 // For now, wide characters are not supported
-Token* get_escape_sequence(char scanned[], char* raw_ch_start, size_t raw_ch_len, char size_modifier) {
+Token* scan_escape_sequence(char scanned[], char* raw_ch_start, size_t raw_ch_len, char size_modifier) {
     // scanned = L'\ ... ' OR '\ ...'
     Token* result = NULL;
     char* number = strndup(raw_ch_start, raw_ch_len);
@@ -152,8 +197,8 @@ Token* get_escape_sequence(char scanned[], char* raw_ch_start, size_t raw_ch_len
     if (*raw_ch_start == 'x') {
         // hex
         long int l_num = strtol(number+1, NULL, 16);
-        if (errno == ERANGE || l_num > UCHAR_MAX || l_num < CHAR_MIN) {
-            fprintf(stderr, "err: hex char out of range");
+        if (errno == ERANGE || l_num > UCHAR_MAX) {
+            fprintf(stderr, "err: hex char out of range\n");
             exit(1);
         }
         result = malloc(sizeof(Token));
@@ -164,8 +209,8 @@ Token* get_escape_sequence(char scanned[], char* raw_ch_start, size_t raw_ch_len
     } else if (isdigit(*raw_ch_start)) {
         // octal
         long int l_num = strtol(number, NULL, 8);
-        if (errno == ERANGE || l_num > UCHAR_MAX || l_num < CHAR_MIN) {
-            fprintf(stderr, "err: octal char out of range");
+        if (errno == ERANGE || l_num > UCHAR_MAX) {
+            fprintf(stderr, "err: octal char out of range\n");
             exit(1);
         }
         result = malloc(sizeof(Token));
@@ -197,15 +242,16 @@ Token* get_escape_sequence(char scanned[], char* raw_ch_start, size_t raw_ch_len
     return result;
 }
 
-Token* get_non_escaped_charac(char scanned[], size_t len) {
+Token* scan_non_escaped_charac(char scanned[], size_t len) {
     char ch = scanned[len - 3];
     if (ch == '\'' || ch == '\\' || ch == '\n') {
         return NULL;
     }
-    size_t charac_bytes = scanned[0] == '\'' ? len - 1 : len - 2;
+    size_t charac_len = scanned[0] == '\'' ? len - 1 : len - 2;
     // TODO: huh? why this?
-    if (charac_bytes > 4) {
-        // warn: charac constant too long for its type
+    if (charac_len > 4) {
+        fprintf(stderr, "err: multi-character character constants not supported\n");
+        exit(1);
     }
     Token* result = malloc(sizeof(Token));
     result->type = CONSTANT;
@@ -215,8 +261,7 @@ Token* get_non_escaped_charac(char scanned[], size_t len) {
     return result;
 }
 
-Token* get_charac_constant(FILE* fptr) {
-    // assume ch0 = l | u | u | ', ch1
+Token* scan_charac_constant(FILE* fptr) {
     // only looks for closing ' until \n or eof (or \r?)
     // for numerical escape sequences, range is 0-255
     // hex: \xff
@@ -264,9 +309,9 @@ Token* get_charac_constant(FILE* fptr) {
     scanned[len++] = '\0';
 
     if (escaped) {
-        result = get_escape_sequence(scanned, raw_ch_start, raw_ch_end-raw_ch_start+1, size_modifier);
+        result = scan_escape_sequence(scanned, raw_ch_start, raw_ch_end-raw_ch_start+1, size_modifier);
     } else {
-        result = get_non_escaped_charac(scanned, len);
+        result = scan_non_escaped_charac(scanned, len);
     }
 
     return result;
@@ -284,13 +329,12 @@ Token* scan_constant(FILE* fptr) {
     int ch1 = fpeek(fptr);
     ungetc(ch0, fptr);
 
-    printf("ch0: %c, ch1: %c\n", ch0, ch1);
-    if (isdigit(ch0)) get_numerical_constant(fptr);
+    if (isdigit(ch0)) result = scan_numerical_constant(fptr);
     else if (
         (ch0 == '\'') ||
         ((ch0 == 'L' || ch0 == 'u' || ch0 == 'U') && ch1 == '\'')
     ) {
-        result = get_charac_constant(fptr);
+        result = scan_charac_constant(fptr);
     }
 
     return result;
@@ -334,14 +378,14 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie) {
     int ch;
     do {
         ch = fpeek(fptr);
-        printf("-> curr ch: '%c'\n", ch);
 
         if (isspace(ch)) skip_whitespace(fptr);
         else if ((result = scan_constant(fptr))) { break; }
         else if ((result = scan_punctuator(fptr))) { break; }
         else if ((result = scan_keyword_or_id(fptr, keyword_trie))) { break; }
+        else if (ch == EOF) { break; }
         else {
-            fprintf(stderr, "err: can't recognize token");
+            fprintf(stderr, "err: can't recognize token\n");
             exit(1);
         }
     } while (ch != EOF);
@@ -366,9 +410,11 @@ int main(int argc, char* argv[])
 
     Token* token;
     while ((token = get_next_token(fptr, keyword_trie))) {
-        int token_subtype = -1;
-        if (token->type == KEYWORD) token_subtype = token->keyword_type;
-        else if (token->type == PUNCTUATOR) token_subtype = token->punctuator_type;
-        printf("---\nSCANNED: TOKEN(type=%d, subtype=%d, text=\"%s\", i_value=%li)\n---\n", token->type, token_subtype, token->text, token->i_value);
+        int token_subtype = token->type == KEYWORD ?
+            token->keyword_type : token->punctuator_type;
+        printf("---\nSCANNED: TOKEN(type=%d, subtype=%d,\
+                text=\"%s\", i_value=%li)\
+                \n---\n",
+                token->type, token_subtype, token->text, token->i_value);
     }
 }
