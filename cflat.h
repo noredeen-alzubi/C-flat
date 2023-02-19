@@ -1,7 +1,8 @@
-#ifndef LEX_H
-#define LEX_H
+#ifndef CFLAT_H
+#define CFLAT_H
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #define FOREACH_KEYWORD_TYPE(KEYWORD_TYPE)           \
         KEYWORD_TYPE(AUTO, "auto")              \
@@ -67,12 +68,18 @@ typedef enum {
     DECIMAL_INT, DECIMAL_FLOAT, HEX_INT, HEX_FLOAT, OCTAL_INT, ENUMERATION, CHARAC
 } ConstantType;
 
-typedef enum {KEYWORD, ID, LITERAL, PUNCTUATOR, CONSTANT} TokenType;
+typedef enum {KEYWORD, ID, PUNCTUATOR, CONSTANT, STRING_LIT} TokenType;
+
+typedef struct string dstring;
+struct string {
+    char* str;
+    size_t size, len;
+};
 
 typedef struct Token Token;
 struct Token {
     TokenType type;
-    char* text;
+    dstring text;
     int64_t i_value;
     long double f_value;
     union
@@ -82,5 +89,24 @@ struct Token {
         ConstantType constant_type;
     };
 };
+
+#define ALPHABET_SIZE 128
+
+typedef struct TokenTrieNode TokenTrieNode;
+struct TokenTrieNode {
+    char ch;
+    TokenTrieNode* children[ALPHABET_SIZE];
+    Token* token;
+};
+
+TokenTrieNode* build_token_trie(char** strings, int* subtypes, size_t count, TokenType type);
+
+void dstring_append(dstring* dstr, char c);
+char dstring_at(dstring* dstr, int i);
+char dstring_set(dstring* dstr, int i, char c);
+void dstring_initialize(dstring* dstr);
+void dstring_initialize_str(dstring* dstr, char* str);
+void dstring_cat(dstring* dest, dstring* src);
+void dstring_reserve(dstring* dstr, size_t len);
 
 #endif
