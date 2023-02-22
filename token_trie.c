@@ -18,7 +18,7 @@ TokenTrieNode* build_token_trie(char* strings[], int subtypes[], size_t count, T
             curr = curr->children[str[j]];
         }
         Token* token = malloc(sizeof(Token));
-        dstring_initialize_str(&token->text, str);
+        dstring_initialize_str(&token->text, str, -1);
         token->type = type;
         if (type == KEYWORD) token->keyword_type = subtypes[i];
         else if (type == PUNCTUATOR) token->punctuator_type = subtypes[i];

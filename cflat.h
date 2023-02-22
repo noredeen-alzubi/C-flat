@@ -82,6 +82,7 @@ struct Token {
     dstring text;
     int64_t i_value;
     long double f_value;
+    dstring s_value;
     union
     {
         KeywordType keyword_type;
@@ -105,8 +106,9 @@ void dstring_append(dstring* dstr, char c);
 char dstring_at(dstring* dstr, int i);
 char dstring_set(dstring* dstr, int i, char c);
 void dstring_initialize(dstring* dstr);
-void dstring_initialize_str(dstring* dstr, char* str);
+void dstring_initialize_str(dstring* dstr, char* str, int n);
 void dstring_cat(dstring* dest, dstring* src);
 void dstring_reserve(dstring* dstr, size_t len);
+void dstring_free(dstring dstr);
 
 #endif
