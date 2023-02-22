@@ -53,6 +53,9 @@
 
 #define PUNCTUATOR_TYPE_COUNT 18
 
+// TODO: get rid of this
+#define ALPHABET_SIZE 128
+
 #define GENERATE_ENUM(ENUM, TEXT) ENUM,
 #define GENERATE_STRING(ENUM, TEXT) TEXT,
 
@@ -64,11 +67,7 @@ typedef enum {
     FOREACH_PUNCTUATOR_TYPE(GENERATE_ENUM)
 } PunctuatorType;
 
-typedef enum {
-    DECIMAL_INT, DECIMAL_FLOAT, HEX_INT, HEX_FLOAT, OCTAL_INT, ENUMERATION, CHARAC
-} ConstantType;
-
-typedef enum {KEYWORD, ID, PUNCTUATOR, CONSTANT, STRING_LIT} TokenType;
+typedef enum {TK_KEYWORD, TK_ID, TK_PUNCT, TK_NUM, TK_STR, TK_CHAR} TokenType;
 
 typedef struct string dstring;
 struct string {
@@ -79,19 +78,20 @@ struct string {
 typedef struct Token Token;
 struct Token {
     TokenType type;
-    dstring text;
-    int64_t i_value;
-    long double f_value;
-    dstring s_value;
+    Token* next;
+    dstring text; // for debugging
+
+    int64_t i_value; // TK_NUM, TK_CHAR
+    long double f_value; // TK_NUM
+    dstring s_value; // TK_STR
+
     union
     {
         KeywordType keyword_type;
         PunctuatorType punctuator_type;
-        ConstantType constant_type;
     };
 };
 
-#define ALPHABET_SIZE 128
 
 typedef struct TokenTrieNode TokenTrieNode;
 struct TokenTrieNode {

@@ -54,7 +54,7 @@ Token* scan_punctuator(FILE* fptr)
             Token* t = NULL;
             if (punctuator_strings[i][1] == '\0' || ch1 == punctuator_strings[i][1]) {
                 t = malloc(sizeof(Token));
-                t->type = PUNCTUATOR;
+                t->type = TK_PUNCT;
                 dstring_initialize_str(&t->text, punctuator_strings[i], -1);
                 t->punctuator_type = punctuator_enums[i];
                 if (punctuator_strings[i][1] == '\0') ungetc(ch1, fptr);
@@ -116,7 +116,6 @@ Token* scan_numerical_constant(FILE* fptr)
     int ch0 = fgetc(fptr);
     int ch1 = fgetc(fptr);
     int base;
-    ConstantType type;
 
     dstring scanned;
     dstring_initialize(&scanned);
@@ -124,18 +123,15 @@ Token* scan_numerical_constant(FILE* fptr)
     // we dont ungetc() ch0 and ch1 in this case so we discard the 0x prefix
     if (ch0 == '0' && (ch1 == 'x' || ch1 == 'X')) {
         base = 16;
-        type = HEX_INT;
         dstring_append(&scanned, ch0);
         dstring_append(&scanned, ch1);
     }
     else {
         if (ch0 == '0') {
             base = 8;
-            type = OCTAL_INT;
         }
         else {
             base = 10;
-            type = DECIMAL_INT;
         }
         ungetc(ch1, fptr);
         ungetc(ch0, fptr);
@@ -144,22 +140,20 @@ Token* scan_numerical_constant(FILE* fptr)
     while(is_digit((ch0 = fgetc(fptr)), base)) { dstring_append(&scanned, ch0); }
     ungetc(ch0, fptr);
 
-    if (type == HEX_INT && scanned.len < 3) {
+    if (base == 16 && scanned.len < 3) {
         fprintf(stderr, "err: missing hex digits from integer literal\n");
         exit(1);
     }
 
-    uint64_t l_num = strtoul(type == HEX_INT ? scanned.str+2 : scanned.str, NULL, base);
+    uint64_t l_num = strtoul(base == 16 ? scanned.str+2 : scanned.str, NULL, base);
     if (errno == ERANGE || l_num > ULONG_MAX) {
         fprintf(stderr, "err: integer literal is too big\n");
         exit(1);
     }
 
     result = malloc(sizeof(Token));
-    result->type = CONSTANT;
-    result->constant_type = type;
+    result->type = TK_NUM;
     result->i_value = l_num;
-    // TODO: does this work???
     memcpy(&result->text, &scanned, sizeof(dstring));
 
     return result;
@@ -261,8 +255,7 @@ Token* scan_char_escape_sequence(
     get_escape_sequence(raw_dstr, &value, &base);
     Token* result = malloc(sizeof(Token));
     result->i_value = value;
-    result->type = CONSTANT;
-    result->constant_type = CHARAC;
+    result->type = TK_CHAR;
     memcpy(&result->text, &scanned, sizeof(dstring));
     return result;
 }
@@ -283,8 +276,7 @@ Token* scan_char_non_escaped(dstring* scanned)
     }
 
     Token* result = malloc(sizeof(Token));
-    result->type = CONSTANT;
-    result->constant_type = CHARAC;
+    result->type = TK_CHAR;
     memcpy(&result->text, &scanned, sizeof(dstring));
 
     return result;
@@ -420,7 +412,7 @@ Token* scan_string_literal(FILE* fptr)
             }
         }
         result = malloc(sizeof(Token));
-        result->type = STRING_LIT;
+        result->type = TK_STR;
         memcpy(&result->s_value, &raw_dstr, sizeof(dstring));
         memcpy(&result->text, &scanned, sizeof(dstring));
     }
@@ -453,7 +445,7 @@ Token* scan_keyword_or_id(FILE* fptr, TokenTrieNode* keyword_trie)
 
     dstring_cat(&scanned, &rest_of_id);
     Token* token = malloc(sizeof(Token));
-    token->type = ID;
+    token->type = TK_ID;
     memcpy(&token->text, &scanned, sizeof(dstring));
     return token;
 }
@@ -483,7 +475,7 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie)
 
 int main(int argc, char* argv[])
 {
-    TokenTrieNode* keyword_trie = build_token_trie(keyword_strings, keyword_enums, KEYWORD_TYPE_COUNT, KEYWORD);
+    TokenTrieNode* keyword_trie = build_token_trie(keyword_strings, keyword_enums, KEYWORD_TYPE_COUNT, TK_KEYWORD);
     if (argc < 2) {
         fprintf(stderr, "err: missing argument: file\n");
         return 1;
@@ -498,7 +490,7 @@ int main(int argc, char* argv[])
 
     Token* token;
     while ((token = get_next_token(fptr, keyword_trie))) {
-        int token_subtype = token->type == KEYWORD ?
+        int token_subtype = token->type == TK_KEYWORD ?
             token->keyword_type : token->punctuator_type;
         printf("---\nSCANNED: TOKEN(type=%d, subtype=%d,\
                 text=\"%s\", i_value=%li)\
