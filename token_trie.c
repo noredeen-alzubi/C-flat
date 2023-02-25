@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "cflat.h"
 
-TokenTrieNode* build_token_trie(char* strings[], int subtypes[], size_t count, TokenType type) {
+TokenTrieNode* build_token_trie(char* strings[], int subtypes[], size_t count) {
     TokenTrieNode* root = calloc(1, sizeof(TokenTrieNode));
     root->ch = '\0';
 
@@ -19,10 +19,7 @@ TokenTrieNode* build_token_trie(char* strings[], int subtypes[], size_t count, T
         }
         Token* token = malloc(sizeof(Token));
         dstring_initialize_str(&token->text, str, -1);
-        token->type = type;
-        if (type == TK_KEYWORD) token->keyword_type = subtypes[i];
-        else if (type == TK_PUNCT) token->punctuator_type = subtypes[i];
-        else exit(1);
+        token->ty = subtypes[i];
         curr->token = token;
     }
 

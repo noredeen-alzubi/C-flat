@@ -54,9 +54,8 @@ Token* scan_punctuator(FILE* fptr)
             Token* t = NULL;
             if (punctuator_strings[i][1] == '\0' || ch1 == punctuator_strings[i][1]) {
                 t = malloc(sizeof(Token));
-                t->type = TK_PUNCT;
+                t->ty = punctuator_enums[i];
                 dstring_initialize_str(&t->text, punctuator_strings[i], -1);
-                t->punctuator_type = punctuator_enums[i];
                 if (punctuator_strings[i][1] == '\0') ungetc(ch1, fptr);
                 return t;
             }
@@ -152,7 +151,7 @@ Token* scan_numerical_constant(FILE* fptr)
     }
 
     result = malloc(sizeof(Token));
-    result->type = TK_NUM;
+    result->ty = TK_NUM;
     result->i_value = l_num;
     memcpy(&result->text, &scanned, sizeof(dstring));
 
@@ -248,14 +247,13 @@ Token* scan_char_escape_sequence(
    char size_modifier
 )
 {
-    // scanned = L'\ ... ' OR '\ ...'
     int64_t value;
     int base;
     assert(dstring_at(raw_dstr, 0) == '\\');
     get_escape_sequence(raw_dstr, &value, &base);
     Token* result = malloc(sizeof(Token));
     result->i_value = value;
-    result->type = TK_CHAR;
+    result->ty = TK_CHAR;
     memcpy(&result->text, &scanned, sizeof(dstring));
     return result;
 }
@@ -276,7 +274,7 @@ Token* scan_char_non_escaped(dstring* scanned)
     }
 
     Token* result = malloc(sizeof(Token));
-    result->type = TK_CHAR;
+    result->ty = TK_CHAR;
     memcpy(&result->text, &scanned, sizeof(dstring));
 
     return result;
@@ -412,7 +410,7 @@ Token* scan_string_literal(FILE* fptr)
             }
         }
         result = malloc(sizeof(Token));
-        result->type = TK_STR;
+        result->ty = TK_STR;
         memcpy(&result->s_value, &raw_dstr, sizeof(dstring));
         memcpy(&result->text, &scanned, sizeof(dstring));
     }
@@ -421,7 +419,6 @@ Token* scan_string_literal(FILE* fptr)
         ungetc(ch1, fptr);
         ungetc(ch0, fptr);
     }
-
 
     return result;
 }
@@ -445,7 +442,7 @@ Token* scan_keyword_or_id(FILE* fptr, TokenTrieNode* keyword_trie)
 
     dstring_cat(&scanned, &rest_of_id);
     Token* token = malloc(sizeof(Token));
-    token->type = TK_ID;
+    token->ty = TK_ID;
     memcpy(&token->text, &scanned, sizeof(dstring));
     return token;
 }
@@ -473,28 +470,38 @@ Token* get_next_token(FILE* fptr, TokenTrieNode* keyword_trie)
     return result;
 }
 
-int main(int argc, char* argv[])
-{
-    TokenTrieNode* keyword_trie = build_token_trie(keyword_strings, keyword_enums, KEYWORD_TYPE_COUNT, TK_KEYWORD);
-    if (argc < 2) {
-        fprintf(stderr, "err: missing argument: file\n");
-        return 1;
-    }
+Token* get_token_list(char file[]) {
+    FILE* fptr = fopen(file, "r");
+    TokenTrieNode* keyword_trie = build_token_trie(keyword_strings, keyword_enums, KEYWORD_TYPE_COUNT);
+    Token* curr = get_next_token(fptr, keyword_trie);
+    Token* first = curr;
+    Token* prev = curr;
+    while ((curr = get_next_token(fptr, keyword_trie))) { prev->next = curr; prev = curr; }
 
-    FILE* fptr = fopen(argv[1], "r");
-
-    if (fptr == NULL) {
-        fprintf(stderr, "err: file can't be opened\n");
-        return 1;
-    }
-
-    Token* token;
-    while ((token = get_next_token(fptr, keyword_trie))) {
-        int token_subtype = token->type == TK_KEYWORD ?
-            token->keyword_type : token->punctuator_type;
-        printf("---\nSCANNED: TOKEN(type=%d, subtype=%d,\
-                text=\"%s\", i_value=%li)\
-                \n---\n",
-                token->type, token_subtype, token->text.str, token->i_value);
-    }
+    return first;
 }
+
+// int main(int argc, char* argv[])
+// {
+//     TokenTrieNode* keyword_trie = build_token_trie(keyword_strings, keyword_enums, KEYWORD_TYPE_COUNT, TK_KEYWORD);
+//     if (argc < 2) {
+//         fprintf(stderr, "err: missing argument: file\n");
+//         return 1;
+//     }
+//
+//     FILE* fptr = fopen(argv[1], "r");
+//
+//     if (fptr == NULL) {
+//         fprintf(stderr, "err: file can't be opened\n");
+//         return 1;
+//     }
+//
+//     Token* token;
+//     while ((token = get_next_token(fptr, keyword_trie))) {
+//         int token_subtype = token->type == TK_KEYWORD ?
+//             token->keyword_type : token->punctuator_type;
+//         printf("---\nSCANNED: TOKEN(type=%d, subtype=%d,\
+//                 text=\"%s\", i_value=%li)\
+//                 \n---\n",
+//                 token->type, token_subtype, token->text.str, token->i_value);
+//     }
