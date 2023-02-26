@@ -65,11 +65,8 @@
 #define GENERATE_ENUM(ENUM, TEXT) ENUM,
 #define GENERATE_STRING(ENUM, TEXT) TEXT,
 
-typedef enum {
-    TK_ID, TK_NUM, TK_STR, TK_CHAR, TK_EOF,
-    FOREACH_KEYWORD_TYPE(GENERATE_ENUM)
-    FOREACH_PUNCTUATOR_TYPE(GENERATE_ENUM)
-} TokenType;
+typedef struct Type Type;
+typedef struct Member Member;
 
 typedef struct string dstring;
 struct string {
@@ -87,6 +84,12 @@ void dstring_reserve(dstring* dstr, size_t len);
 void dstring_free(dstring dstr);
 
 // lex.c
+
+typedef enum {
+    TK_ID, TK_NUM, TK_STR, TK_CHAR, TK_EOF,
+    FOREACH_KEYWORD_TYPE(GENERATE_ENUM)
+    FOREACH_PUNCTUATOR_TYPE(GENERATE_ENUM)
+} TokenType;
 
 typedef struct Token Token;
 struct Token {
@@ -116,31 +119,51 @@ typedef enum {
     TY_CHAR,
     TY_DOUBLE,
     TY_PTR,
+    TY_ARR,
     TY_STRUCT,
-    TY_ENUM
+    TY_ENUM,
+    TY_FUNC,
+    TY_VOID,
 } TypeKind;
-
 
 typedef struct Type Type;
 struct Type {
     TypeKind kind;
     size_t size;
-    int alignment; // compiler-set alignment
     bool is_unsigned;
     bool is_const;
 
-    Type *target_ty; // if kind == TY_PTR
+    // TY_ARR
+    int arr_len;
+
+    // TY_PTR
+    Type *target_ty;
+
+    // TY_FUNC
+    Type *ret_val;
+
+    // TY_STRUCT
+    Member *members;
 };
 
-typedef struct {
+typedef struct VarAttrs VarAttrs;
+struct VarAttrs {
     bool is_typedef;
     bool is_static;
     bool is_extern;
     bool is_inline;
     int alignment;
-} VarAttrs;
+};
 
 // parse.c
+
+typedef struct Member Member;
+struct Member {
+    Member *next;
+    Type *ty;
+    int offset;
+    int alignment;
+};
 
 typedef struct Obj Obj;
 struct Obj {
@@ -152,24 +175,29 @@ struct Obj {
     Obj **params;
 };
 
-typedef struct {
-    char *id;
+typedef struct VarRef VarRef;
+struct VarRef {
     Obj *var;
-} VarRef;
+};
 
-typedef struct {
-    char *id;
+typedef struct FuncInvok FuncInvok;
+struct FuncInvok {
     Obj *func;
-} FuncInvok;
-
+};
 
 typedef struct Expr Expr;
 struct Expr {
+    Type *ty;
+    // TODO: what happens with alignments in exprs??
     Expr *l_operand;
     Expr *r_operand;
 
-    VarRef var_ref; // Literals put in compiler-generated variables
-    FuncInvok func_invok;
+    VarRef *var_ref; // str literals put in compiler-generated variables
+    FuncInvok *func_invok;
+    int64_t val; // numbers and chararcter values
+
+    int subexpr_cnt;
+    Expr *subexprs;
 };
 
 #endif

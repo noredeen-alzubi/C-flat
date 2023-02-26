@@ -1,33 +1,23 @@
-#include "cflat.h"
 #include <stdio.h>
+#include "cflat.h"
 
-typedef struct {
-    bool is_typedef;
-    bool is_static;
-    bool is_extern;
-    bool is_inline;
-    int alignment;
-} VarAttrs;
+#define STB_DS_IMPLEMENTATION
+#include "stb_ds.h"
 
-typedef struct Obj Obj;
-struct Obj {
-    Type *ty;
-    VarAttrs *attrs;
-    char *id;
-
-    int param_count;
-    Obj **params;
+typedef struct Scope Scope;
+struct Scope {
+    struct { char *key; Type *val; } *vars;
+    Scope *next;
 };
 
-typedef struct {
-    char *id;
-    Obj *var;
-} VarRef;
+// utils
 
-typedef struct {
-    char *id;
-    Obj *func;
-} FuncInvok;
+inline Scope *new_scope()
+{
+    Scope *res = malloc(sizeof(Scope));
+    res->vars = NULL;
+    return res;
+}
 
 inline void next_tk(Token **curr_tk) {
     if ((*curr_tk)->next == NULL) {
@@ -46,6 +36,8 @@ inline TokenType tk_ty(Token **curr_tk)
     return (*curr_tk)->ty;
 }
 
+// declarations
+
 void declarator(Token **curr_tk, Type* ty, VarAttrs *attrs, bool is_func_params);
 void direct_declarator(
     Token **curr_tk,
@@ -55,28 +47,57 @@ void direct_declarator(
     bool is_func_def_params
 );
 
+// globals
+
+Scope *scope_stack_head;
+
+// parsing
+
+/* primary_expr = TK_ID
+ *              | TK_NUM
+ *              | TK_CHAR
+ *              | TK_STR
+ *              | "(" exprs ")"
+ * LATER        | generic_selection
+ *
+ * NOTE: generic_selection for preprocesser I think
+ * NOTE: we treat TK_STR like a VarRef (to a compiler-generated variable)
+ */
+Expr *primary_expr(Token **curr_tk)
+{
+    Expr *res = malloc(sizeof(Expr));
+    switch (tk_ty(curr_tk)) {
+        case TK_ID:
+            break;
+        case TK_STR:
+            break;
+        case TK_NUM: case TK_CHAR:
+            break;
+        case TK_LPAREN:
+            break;
+        default:
+            break;
+    }
+    return NULL;
+}
+
+/* postfix_expr = primary_expr
+ *              | postfix_expr "[" expr "]"
+ *              | postfix_expr "(" ( assnt_expr ("," assnt_expr)* )? ")"
+ *              | postfix_expr ("." || "->") TK_ID
+ *              | postfix_expr ("++" | "--")
+ *              | "(" type_name ")" "{" init_list ","? "}"
+ */
+Expr *postfix_expr()
+{
+    return NULL;
+}
+
 /* cast_expr = ("(" unary_expr ")")* unary_expr
  */
-void cast_expr(Token **curr_tk)
+Expr *cast_expr(Token **curr_tk)
 {
-}
-
-/* mul_expr = cast_expr (("*" | "/" | "%") cast_expr)*
- */
-void mul_expr()
-{
-}
-
-/* add_expr = mul_expr (("+" | "-") mul_expr)*
- */
-void add_expr()
-{
-}
-
-/* shift_expr = add_expr (("<<" | ">>") add_expr)*
- */
-void shift_expr()
-{
+    return NULL;
 }
 
 /* unary_expr = postfix_expr
@@ -85,8 +106,30 @@ void shift_expr()
  *            | TK_SIZEOF unary_expr
  *            | (TK_SIZEOF | TK__ALIGNOF) "(" type_name ")"
  */
-void unary_expr()
+Expr *unary_expr()
 {
+    return NULL;
+}
+
+/* mul_expr = cast_expr (("*" | "/" | "%") cast_expr)*
+ */
+Expr *mul_expr()
+{
+    return NULL;
+}
+
+/* add_expr = mul_expr (("+" | "-") mul_expr)*
+ */
+Expr *add_expr()
+{
+    return NULL;
+}
+
+/* shift_expr = add_expr (("<<" | ">>") add_expr)*
+ */
+Expr *shift_expr()
+{
+    return NULL;
 }
 
 /* assnt_expr = cond_expr
@@ -103,30 +146,6 @@ Expr *assnt_expr(Token **curr_tk)
 Expr *exprs(int *expr_cnt)
 {
     return NULL;
-}
-
-/* primary_expr = TK_ID
- *              | TK_CONST
- *              | TK_STR
- *              | "(" exprs ")"
- * LATER        | generic_selection
- *
- * NOTE: generic_selection for preprocesser I think
- * NOTE: we treat TK_CONST like a VarRef (to a compiler-generated variable)
- */
-void primary_expr(Token **curr_tk)
-{
-}
-
-/* postfix_expr = primary_expr
- *              | postfix_expr "[" expr "]"
- *              | postfix_expr "(" ( assnt_expr ("," assnt_expr)* )? ")"
- *              | postfix_expr ("." || "->") TK_ID
- *              | postfix_expr ("++" | "--")
- *              | "(" type_name ")" "{" init_list ","? "}"
- */
-void postfix_expr()
-{
 }
 
 /* decl_specs = ( TK_TYPEDEF | TK_EXTERN | TK_STATIC | TK__THR_LOC
@@ -170,7 +189,6 @@ int pointers(Token **curr_tk, Type *ty, VarAttrs *attrs)
                     attrs->is_static = true;
                     break;
                 case TK_CONST:
-                    ty->is_const = true;
                     break;
                 case TK_RESTRICT:
                     break;
