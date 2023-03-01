@@ -6,9 +6,20 @@
 
 typedef struct Scope Scope;
 struct Scope {
-    struct { char *key; Type *val; } *vars;
+    struct { char *key; Type *val; } *vars; // symbol table
     Scope *next;
 };
+
+void declarator(Token **curr_tk, Type* ty, VarAttrs *attrs, bool is_func_params);
+void direct_declarator(
+    Token **curr_tk,
+    Type *ty,
+    VarAttrs *attrs,
+    bool is_func_params,
+    bool is_func_def_params
+);
+
+Scope *scope_stack_head;
 
 // utils
 
@@ -29,27 +40,13 @@ inline void next_tk(Token **curr_tk) {
 inline TokenType tk_ty(Token **curr_tk)
 {
     if (*curr_tk == NULL) {
-        fprintf(stderr, "internal err: called ty on NULL\n");
+        fprintf(stderr, "internal err: called tk_ty on NULL\n");
         exit(1);
     }
 
     return (*curr_tk)->ty;
 }
 
-// declarations
-
-void declarator(Token **curr_tk, Type* ty, VarAttrs *attrs, bool is_func_params);
-void direct_declarator(
-    Token **curr_tk,
-    Type *ty,
-    VarAttrs *attrs,
-    bool is_func_params,
-    bool is_func_def_params
-);
-
-// globals
-
-Scope *scope_stack_head;
 
 // parsing
 
@@ -65,6 +62,8 @@ Scope *scope_stack_head;
  */
 Expr *primary_expr(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
     Expr *res = malloc(sizeof(Expr));
     switch (tk_ty(curr_tk)) {
         case TK_ID:
@@ -78,6 +77,8 @@ Expr *primary_expr(Token **curr_tk)
         default:
             break;
     }
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
@@ -88,8 +89,11 @@ Expr *primary_expr(Token **curr_tk)
  *              | postfix_expr ("++" | "--")
  *              | "(" type_name ")" "{" init_list ","? "}"
  */
-Expr *postfix_expr()
+Expr *postfix_expr(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
@@ -97,6 +101,9 @@ Expr *postfix_expr()
  */
 Expr *cast_expr(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
@@ -106,29 +113,51 @@ Expr *cast_expr(Token **curr_tk)
  *            | TK_SIZEOF unary_expr
  *            | (TK_SIZEOF | TK__ALIGNOF) "(" type_name ")"
  */
-Expr *unary_expr()
+Expr *unary_expr(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
 /* mul_expr = cast_expr (("*" | "/" | "%") cast_expr)*
  */
-Expr *mul_expr()
+Expr *mul_expr(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
 /* add_expr = mul_expr (("+" | "-") mul_expr)*
  */
-Expr *add_expr()
+Expr *add_expr(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
 /* shift_expr = add_expr (("<<" | ">>") add_expr)*
  */
-Expr *shift_expr()
+Expr *shift_expr(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* cond_expr = LOR_expr ("?" exprs ":" cond_expr)?
+ */
+Expr *cond_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
@@ -138,13 +167,19 @@ Expr *shift_expr()
  */
 Expr *assnt_expr(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
 /* exprs = assnt_expr ("," assnt_expr)*
  */
-Expr *exprs(int *expr_cnt)
+Expr *exprs(Token **curr_tk, int *expr_cnt)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
@@ -169,6 +204,9 @@ Expr *exprs(int *expr_cnt)
  */
 Type *decl_specs(Token **curr_tk, VarAttrs *attrs, bool is_func_decl)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
@@ -212,19 +250,26 @@ int pointers(Token **curr_tk, Type *ty, VarAttrs *attrs)
  */
 Obj *param_decl(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
     VarAttrs *attrs;
     Type *ty = decl_specs(curr_tk, attrs, false);
     Obj *var = malloc(sizeof(Obj));
     var->ty = ty;
     var->attrs = attrs;
 
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
 /* param_t_list = param_decl ("," param_decl)* (, "...")?
  */
-void param_t_list()
+void param_t_list(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return;
 }
 
 /* func_id = TK_ID
@@ -232,6 +277,7 @@ void param_t_list()
  */
 char* func_id(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
     return NULL;
 }
 
@@ -240,21 +286,30 @@ char* func_id(Token **curr_tk)
  */
 Obj *func_params(Token **curr_tk, int *param_cnt)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
 /* func_declarator = pointers? func_id func_params
  */
-void func_declarator(Token **curr_tk, Obj *func)
+Obj *func_declarator(Token **curr_tk, Type *ty, VarAttrs *attrs)
 {
-    pointers(curr_tk, func->ty, func->attrs);
+    Token *tmp_tk_ptr = *curr_tk;
 
-    char* id = func_id(curr_tk);
+    pointers(&tmp_tk_ptr, ty, attrs);
+
+    char* id = func_id(&tmp_tk_ptr);
     if (id == NULL) { /* problem */ }
-    func->id = id;
 
     int param_cnt;
-    func_params(curr_tk, &param_cnt);
+    func_params(&tmp_tk_ptr, &param_cnt);
+
+    // TODO: make func and fill in things
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
 }
 
 /* direct_declarator = TK_ID
@@ -268,7 +323,6 @@ void func_declarator(Token **curr_tk, Obj *func)
  * NOTE: type_qualifier OR static only in func params
  * NOTE: "[" type_qualifier* "* "]" ONLY IN THE PARAMS OF A FUNCTION DECLARATION (NOT DEFINITION)
  */
-
 void direct_declarator(
     Token **curr_tk,
     Type *ty,
@@ -277,15 +331,17 @@ void direct_declarator(
     bool is_func_def_params
 )
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
     char* id;
-    if (tk_ty(curr_tk) == TK_LPAREN) {
-        next_tk(curr_tk);
-        declarator(curr_tk, ty, attrs, is_func_params);
-        if (tk_ty(curr_tk) != TK_RPAREN) { /* problem */ }
-        next_tk(curr_tk);
-    } else if (tk_ty(curr_tk) == TK_ID) {
-        id = (*curr_tk)->text.str;
-        next_tk(curr_tk);
+    if (tk_ty(&tmp_tk_ptr) == TK_LPAREN) {
+        next_tk(&tmp_tk_ptr);
+        declarator(&tmp_tk_ptr, ty, attrs, is_func_params);
+        if (tk_ty(&tmp_tk_ptr) != TK_RPAREN) { /* problem */ }
+        next_tk(&tmp_tk_ptr);
+    } else if (tk_ty(&tmp_tk_ptr) == TK_ID) {
+        id = tmp_tk_ptr->text.str;
+        next_tk(&tmp_tk_ptr);
     }
 
     if (tk_ty(curr_tk) != TK_LBRACKET) {
@@ -346,18 +402,29 @@ void direct_declarator(
         if (tk_ty(curr_tk) != TK_RBRACKET) { /* problem */ }
         next_tk(curr_tk);
     }
+
+    *curr_tk = tmp_tk_ptr;
+    return;
 }
 
 /* declarator = pointers? direct_declarator
  */
 void declarator(Token **curr_tk, Type* ty, VarAttrs *attrs, bool is_func_params)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return;
 }
 
 /* abstract_declarator = pointers? direct_abstract_declarator
  */
-void abstract_declarator()
+void abstract_declarator(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return;
 }
 
 /* direct_abstract_declarator = ( abstract_declarator )
@@ -366,8 +433,111 @@ void abstract_declarator()
  *                            | direct_abstract_declarator? "[" static type-qualifier* assnt_expr "]"
  *                            | direct_abstract_declarator? "[" type_qualifier+ static assnt_expr "]"
  */
-void direct_abstract_declarator()
+void direct_abstract_declarator(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return;
+}
+
+/* designation = ("[" const_expr "]" | "." TK_ID)+ "="
+ */
+void designation(Token **curr_tk)
+{
+    while (tk_ty(curr_tk) == TK_LBRACE || tk_ty(curr_tk) == TK_DOT) {
+        if (tk_ty(curr_tk) == TK_LBRACE) {
+            cond_expr(curr_tk);
+        } else {
+        }
+    }
+}
+
+/* init_list = designation? init ("," designation? init)*
+ */
+void init_list(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return;
+}
+
+/* init = assnt_expr
+ *      | "{" init_list (","?) "}"
+ */
+void init(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return;
+}
+
+/* init_declarator = declarator (= init)?
+ *
+ */
+Obj *init_declarator(Token **curr_tk, Type *ty, VarAttrs *attrs, bool is_func_param)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    declarator(&tmp_tk_ptr, ty, attrs, false);
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* init_declarator_list = init_declarator ("," init_declarator)*
+ */
+Obj *init_declarator_list(Token **curr_tk, int *var_cnt, Type *ty, VarAttrs *attrs)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* var_decl = decl_specs init_declarator_list? ;
+ *      | static_assert_decl
+ */
+Obj *var_decl(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    VarAttrs *attrs;
+    Type *ty = decl_specs(&tmp_tk_ptr, attrs, false);
+    if (!ty) { /* problem: expected declaration specifiers */ }
+
+    int var_cnt;
+    init_declarator_list(&tmp_tk_ptr, &var_cnt, ty, attrs);
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* stmt = labeled_stmt
+ *      | compound_stmt
+ *      | expr_stmt
+ *      | select_stmt
+ *      | iter_stmt
+ *      | jmp_stmt
+ */
+BlockItem *stmt(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* compound_stmt = "{" (var_decl | stmt)* "}"
+ */
+BlockItem *compound_stmt(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
 }
 
 /* func_def = decl_specs? func_declarator var_decl* compound_stmt
@@ -377,64 +547,29 @@ void direct_abstract_declarator()
  */
 Obj *func_def(Token **curr_tk)
 {
+    Token *tmp_tk_ptr = *curr_tk;
+
     VarAttrs *attrs;
-    Type *ty = decl_specs(curr_tk, attrs, true);
+    Type *ret_ty = decl_specs(&tmp_tk_ptr, attrs, true);
+    if (!ret_ty) {
+        // TODO: don't make new Type objects for funcs with no explicit ret type
+        ret_ty = malloc(sizeof(Type));
+        ret_ty->kind = TY_INT;
+    }
 
-    Obj *func = malloc(sizeof(Obj));
-    func->attrs = attrs;
-    func->ty = ty;
+    Type *func_ty = malloc(sizeof(Type));
+    func_ty->kind = TY_FUNC;
+    func_ty->ret_ty = ret_ty;
 
-    func_declarator(curr_tk, func);
+    Obj *func = func_declarator(&tmp_tk_ptr, func_ty, attrs);
 
-    return NULL;
-}
+    // after this point it's a func definition and not a declaration
 
-/* designation = ("[" const_expr "]" | "." TK_ID)+ "="
- */
-void designation()
-{
-}
+    while (var_decl(&tmp_tk_ptr)); // consume but ignore (unsupported)
 
-/* init_list = designation? init ("," designation? init)*
- */
-void init_list(Token **curr_tk)
-{
-}
+    BlockItem *block_items = compound_stmt(&tmp_tk_ptr);
 
-/* init = assnt_expr
- *      | "{" init_list (","?) "}"
- */
-void init(Token **curr_tk)
-{
-}
-
-/* init_declarator = declarator (= init)?
- *
- */
-Obj *init_declarator(Token **curr_tk, Type *ty, VarAttrs *attrs, bool is_func_param)
-{
-    declarator(curr_tk, ty, attrs, false);
-    return NULL;
-}
-
-/* init_declarator_list = init_declarator ("," init_declarator)*
- */
-Obj *init_declarator_list(Token **curr_tk, int *var_cnt, Type *ty, VarAttrs *attrs)
-{
-    return NULL;
-}
-
-/* var_decl = decl_specs init_declarator_list? ;
- *      | static_assert_decl
- */
-Obj *var_decl(Token **curr_tk)
-{
-    VarAttrs *attrs;
-    Type *ty = decl_specs(curr_tk, attrs, false);
-    if (!ty) { /* expected declaration specifiers */ }
-
-    int var_cnt;
-    init_declarator_list(curr_tk, &var_cnt, ty, attrs);
+    *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
