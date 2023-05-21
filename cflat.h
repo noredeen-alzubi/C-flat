@@ -49,6 +49,7 @@
         PUNCTUATOR_TYPE(TK_LBRACKET, "[")               \
         PUNCTUATOR_TYPE(TK_RBRACKET, "]")               \
         PUNCTUATOR_TYPE(TK_DOT, ".")                    \
+        PUNCTUATOR_TYPE(TK_COMMA, ",")                    \
         PUNCTUATOR_TYPE(TK_ADDR, "&")                   \
         PUNCTUATOR_TYPE(TK_STAR, "*")                   \
         PUNCTUATOR_TYPE(TK_PLUS, "+")                   \
@@ -57,7 +58,7 @@
         PUNCTUATOR_TYPE(TK_BNOT, "~")                   \
         PUNCTUATOR_TYPE(TK_LNOT, "!")                   \
 
-#define PUNCTUATOR_TYPE_COUNT 21
+#define PUNCTUATOR_TYPE_COUNT 22
 
 // TODO: get rid of this
 #define ALPHABET_SIZE 128
@@ -193,6 +194,7 @@ struct VarRef {
 
 struct FuncInvok {
     Obj *func;
+
 };
 
 struct Expr {
@@ -201,12 +203,11 @@ struct Expr {
     Expr *l_operand;
     Expr *r_operand;
 
-    VarRef *var_ref; // str literals put in compiler-generated variables
+    VarRef *var_ref; // str literals are put in compiler-generated variables
     FuncInvok *func_invok;
-    int64_t val; // numbers and chararcter values
+    int64_t val; // numbers and chararcter literal values
 
-    int subexpr_cnt;
-    Expr *subexprs;
+    Expr *next;
 };
 
 struct Cond {

@@ -35,6 +35,8 @@ inline void next_tk(Token **curr_tk) {
         fprintf(stderr, "internal err: called next_tk when next is NULL\n");
         exit(1);
     }
+
+    *curr_tk = (*curr_tk)->next;
 }
 
 inline TokenType tk_ty(Token **curr_tk)
@@ -65,12 +67,16 @@ Expr *primary_expr(Token **curr_tk)
     Token *tmp_tk_ptr = *curr_tk;
 
     Expr *res = malloc(sizeof(Expr));
-    switch (tk_ty(curr_tk)) {
+    switch (tk_ty(&tmp_tk_ptr)) {
         case TK_ID:
+            // need to find which Obj in scope this is referencing!
+            res->var_ref = malloc(sizeof(VarRef));
             break;
         case TK_STR:
+            // create Obj and a VarRef to it
             break;
         case TK_NUM: case TK_CHAR:
+            res->val = tmp_tk_ptr->i_value;
             break;
         case TK_LPAREN:
             break;
@@ -82,16 +88,73 @@ Expr *primary_expr(Token **curr_tk)
     return NULL;
 }
 
+/* type_qualifier TODO
+ */
+Type *type_qualifier(Token **curr_tk, VarAttrs *attrs)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    while (tk_ty(&tmp_tk_ptr) == TK_CONST
+            || tk_ty(&tmp_tk_ptr) == TK_RESTRICT
+            || tk_ty(&tmp_tk_ptr) == TK_VOLATILE
+            || tk_ty(&tmp_tk_ptr) == TK__ATOMIC) {
+
+        switch (tk_ty(&tmp_tk_ptr)) {
+            case TK_STATIC:
+                attrs->is_static = true;
+                break;
+            case TK_CONST:
+                break;
+            case TK_RESTRICT:
+                break;
+            case TK_VOLATILE:
+                break;
+            case TK__ATOMIC:
+                break;
+            default:
+                /* problem */
+                return 0;
+        }
+
+        next_tk(&tmp_tk_ptr);
+    }
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* type_spec TODO
+ */
+Type *type_spec()
+{
+}
+
+/* type_name = (type_spec | type_qualifier)+ abstract_declarator?
+ */
+Type *type_name(Token **curr_tk, VarAttrs *attrs)
+{
+}
+
 /* postfix_expr = primary_expr
  *              | postfix_expr "[" expr "]"
  *              | postfix_expr "(" ( assnt_expr ("," assnt_expr)* )? ")"
  *              | postfix_expr ("." || "->") TK_ID
  *              | postfix_expr ("++" | "--")
  *              | "(" type_name ")" "{" init_list ","? "}"
+ *
+ *              | (primary_expr | "(" type_name ")" "{" init_list ","? "}")? ("[" expr "]" | "(" ( assnt_expr ("," assnt_expr)* )? ")" | )*
  */
 Expr *postfix_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
+
+    Expr *expr = primary_expr(&tmp_tk_ptr);
+
+    if (expr) { return expr; }
+
+    if (tk_ty(curr_tk) == TK_LPAREN) {
+
+    }
 
     *curr_tk = tmp_tk_ptr;
     return NULL;
@@ -179,8 +242,25 @@ Expr *exprs(Token **curr_tk, int *expr_cnt)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *first_expr = assnt_expr(&tmp_tk_ptr);
+    if (!first_expr) {
+        return NULL;
+    }
+
+    next_tk(&tmp_tk_ptr);
+    Expr *curr_expr = first_expr;
+    while (tk_ty(&tmp_tk_ptr) == TK_COMMA) {
+        next_tk(&tmp_tk_ptr);
+        Expr *expr = assnt_expr(&tmp_tk_ptr);
+        if (!expr) {
+            return NULL;
+        }
+        curr_expr->next = expr;
+        curr_expr = expr;
+    }
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return first_expr;
 }
 
 /* decl_specs = ( TK_TYPEDEF | TK_EXTERN | TK_STATIC | TK__THR_LOC
@@ -214,15 +294,16 @@ Type *decl_specs(Token **curr_tk, VarAttrs *attrs, bool is_func_decl)
  */
 int pointers(Token **curr_tk, Type *ty, VarAttrs *attrs)
 {
+    Token *tmp_tk_ptr = *curr_tk;
     int ptr_cnt;
-    while (tk_ty(curr_tk) == TK_STAR) {
+    while (tk_ty(&tmp_tk_ptr) == TK_STAR) {
         next_tk(curr_tk);
-        while (tk_ty(curr_tk) == TK_CONST
-                || tk_ty(curr_tk) == TK_RESTRICT
-                || tk_ty(curr_tk) == TK_VOLATILE
-                || tk_ty(curr_tk) == TK__ATOMIC) {
+        while (tk_ty(&tmp_tk_ptr) == TK_CONST
+                || tk_ty(&tmp_tk_ptr) == TK_RESTRICT
+                || tk_ty(&tmp_tk_ptr) == TK_VOLATILE
+                || tk_ty(&tmp_tk_ptr) == TK__ATOMIC) {
 
-            switch (tk_ty(curr_tk)) {
+            switch (tk_ty(&tmp_tk_ptr)) {
                 case TK_STATIC:
                     attrs->is_static = true;
                     break;
@@ -239,10 +320,11 @@ int pointers(Token **curr_tk, Type *ty, VarAttrs *attrs)
                     return 0;
             }
 
-            next_tk(curr_tk);
+            next_tk(&tmp_tk_ptr);
         }
     }
 
+    *curr_tk = tmp_tk_ptr;
     return ptr_cnt;
 }
 
