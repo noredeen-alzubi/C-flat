@@ -92,12 +92,13 @@ typedef enum {
 typedef struct Token Token;
 struct Token {
     TokenType ty;
-    Token* next;
-    dstring text; // for debugging
+    dstring text;
 
     int64_t i_value; // TK_NUM, TK_CHAR
     long double f_value; // TK_NUM
     dstring s_value; // TK_STR
+
+    Token* next;
 };
 
 
@@ -170,15 +171,14 @@ typedef struct Iter Iter;
 typedef struct Jump Jump;
 
 struct Member {
-    Member *next;
     Type *ty;
     int offset;
     int alignment;
+
+    Member *next;
 };
 
 struct Obj {
-    Obj *next;
-
     Type *ty;
     VarAttrs *attrs;
     char *id;
@@ -186,15 +186,20 @@ struct Obj {
     int param_count;
     Obj **params;
     BlockItem *block_items;
+
+    Obj *next;
 };
 
 struct VarRef {
     Obj *var;
+    Member *struct_member; // if *var is a struct
+    dstring id;
 };
 
 struct FuncInvok {
     Obj *func;
-
+    dstring id;
+    Expr *first_arg;
 };
 
 struct Expr {

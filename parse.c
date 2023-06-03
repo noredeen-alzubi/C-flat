@@ -4,9 +4,14 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
+#define RDPARSE_WRAP(body) Token *tmp_tk_ptr = *curr_tk; \
+                           body \
+                           *curr_tk = tmp_tk_ptr
+
+
 typedef struct Scope Scope;
 struct Scope {
-    struct { char *key; Type *val; } *vars; // symbol table
+    struct { char *key; Obj *value; } *vars; // symbol table
     Scope *next;
 };
 
@@ -18,6 +23,8 @@ void direct_declarator(
     bool is_func_params,
     bool is_func_def_params
 );
+Expr *exprs(Token **curr_tk);
+Expr *assnt_expr(Token **curr_tk);
 
 Scope *scope_stack_head;
 
@@ -25,18 +32,21 @@ Scope *scope_stack_head;
 
 inline Scope *new_scope()
 {
+
     Scope *res = malloc(sizeof(Scope));
     res->vars = NULL;
     return res;
 }
 
-inline void next_tk(Token **curr_tk) {
+inline Token *next_tk(Token **curr_tk) {
     if ((*curr_tk)->next == NULL) {
         fprintf(stderr, "internal err: called next_tk when next is NULL\n");
         exit(1);
     }
 
+    Token *temp = *curr_tk;
     *curr_tk = (*curr_tk)->next;
+    return temp;
 }
 
 inline TokenType tk_ty(Token **curr_tk)
@@ -49,6 +59,15 @@ inline TokenType tk_ty(Token **curr_tk)
     return (*curr_tk)->ty;
 }
 
+static void* safe_calloc(size_t n_items, size_t n_bytes)
+{
+    void *ptr = calloc(n_items, n_bytes);
+    if (!ptr) {
+        fprintf(stderr, "internal err: out of memeory");
+        exit(1);
+    }
+    return ptr;
+}
 
 // parsing
 
@@ -66,26 +85,48 @@ Expr *primary_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
-    Expr *res = malloc(sizeof(Expr));
+    Expr *res;
     switch (tk_ty(&tmp_tk_ptr)) {
         case TK_ID:
-            // need to find which Obj in scope this is referencing!
+        {
+            // TODO: this shouldn't be in parser
+            // Scope *top_scope = scope_stack_head;
+            // Obj *ref = NULL;
+            // while(top_scope) {
+            //     ref = hmget(top_scope->vars, tmp_tk_ptr->s_value.str);
+            //     if (ref) break;
+            //     top_scope = top_scope->next;
+            // }
+            // if (!ref) return NULL; // undefined var/func identifier
+            res = malloc(sizeof(Expr));
             res->var_ref = malloc(sizeof(VarRef));
+            // res->var_ref->var = ref;
+            res->var_ref->id = tmp_tk_ptr->text;
             break;
+        }
         case TK_STR:
-            // create Obj and a VarRef to it
+            // TODO: create Obj and a VarRef to it
             break;
         case TK_NUM: case TK_CHAR:
+            res = malloc(sizeof(Expr));
             res->val = tmp_tk_ptr->i_value;
             break;
         case TK_LPAREN:
+            next_tk(&tmp_tk_ptr);
+            Expr *first_expr = exprs(&tmp_tk_ptr);
+            if (!first_expr) { return NULL; } /* problem: expected expressions */
+            next_tk(&tmp_tk_ptr);
+            if (tk_ty(&tmp_tk_ptr) != TK_RPAREN) return NULL;
+            res = first_expr;
             break;
         default:
             break;
     }
 
+    next_tk(&tmp_tk_ptr);
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return res;
 }
 
 /* type_qualifier TODO
@@ -104,16 +145,20 @@ Type *type_qualifier(Token **curr_tk, VarAttrs *attrs)
                 attrs->is_static = true;
                 break;
             case TK_CONST:
+                // TODO
                 break;
             case TK_RESTRICT:
+                // TODO
                 break;
             case TK_VOLATILE:
+                // TODO
                 break;
             case TK__ATOMIC:
+                // TODO
                 break;
             default:
                 /* problem */
-                return 0;
+                return NULL;
         }
 
         next_tk(&tmp_tk_ptr);
@@ -123,48 +168,186 @@ Type *type_qualifier(Token **curr_tk, VarAttrs *attrs)
     return NULL;
 }
 
-/* type_spec TODO
+/* type_spec = TK_VOID | TK_CHAR | TK_SHORT | TK_INT
+ *           | TK_LONG | TK_FLOAT | TK_DOUBLE | TK_SIGNED
+ *           | TK_UNSIGNED | TK__BOOL | TK__COMPLEX
+ *           | _Atomic "(" type_name ")"
  */
 Type *type_spec()
 {
+    return NULL;
 }
 
-/* type_name = (type_spec | type_qualifier)+ abstract_declarator?
- */
 Type *type_name(Token **curr_tk, VarAttrs *attrs)
 {
+    return NULL;
 }
 
-/* postfix_expr = primary_expr
- *              | postfix_expr "[" expr "]"
- *              | postfix_expr "(" ( assnt_expr ("," assnt_expr)* )? ")"
- *              | postfix_expr ("." || "->") TK_ID
- *              | postfix_expr ("++" | "--")
- *              | "(" type_name ")" "{" init_list ","? "}"
- *
- *              | (primary_expr | "(" type_name ")" "{" init_list ","? "}")? ("[" expr "]" | "(" ( assnt_expr ("," assnt_expr)* )? ")" | )*
+/* compound_literal = "(" type_name ")" "{" init_list ","? "}"
+ * TODO: finish this
  */
-Expr *postfix_expr(Token **curr_tk)
+Expr *compound_literal(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
-    Expr *expr = primary_expr(&tmp_tk_ptr);
+    Expr *result;
 
-    if (expr) { return expr; }
+    if (tk_ty(curr_tk) != TK_LPAREN) {
+        return NULL;
+    }
 
-    if (tk_ty(curr_tk) == TK_LPAREN) {
+    next_tk(&tmp_tk_ptr);
 
+    VarAttrs *attrs = malloc(sizeof(VarAttrs));
+    Type *ty = type_name(&tmp_tk_ptr, attrs);
+
+    if (!ty) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_RPAREN) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_LBRACE) return NULL;
+
+    // TODO: continue
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* expr = assnt_expr ("," assnt_expr)*
+ */
+Expr *expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    Expr *first = assnt_expr(&tmp_tk_ptr);
+    if (!first) return NULL;
+
+    Expr *curr = first;
+    while (tk_ty(&tmp_tk_ptr) == TK_COMMA) {
+        next_tk(&tmp_tk_ptr);
+        Expr *next = assnt_expr(&tmp_tk_ptr);
+        if (!next) return NULL;
+        curr->next = next;
+        curr = next;
+    }
+
+    *curr_tk = tmp_tk_ptr;
+    return first;
+}
+
+/* arg_expr_list = assnt_expr ("," assnt_expr)*
+ */
+Expr *arg_expr_list(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    Expr *first = assnt_expr(&tmp_tk_ptr);
+    if (!first) return NULL;
+
+    Expr *curr = first;
+    while (tk_ty(&tmp_tk_ptr) == TK_COMMA) {
+        next_tk(&tmp_tk_ptr);
+        Expr *next = assnt_expr(&tmp_tk_ptr);
+        if (!next) return NULL;
+
+        curr->next = next;
+        curr = next;
     }
 
     *curr_tk = tmp_tk_ptr;
     return NULL;
 }
 
-/* cast_expr = ("(" unary_expr ")")* unary_expr
+/* postfix_expr = primary_expr
+ *              | compound_literal
+ *              | postfix_expr "[" expr "]"
+ *              | postfix_expr "(" ( assnt_expr ("," assnt_expr)* )? ")"
+ *              | postfix_expr ("." || "->") TK_ID
+ *              | postfix_expr ("++" | "--")
+ *
+ * postfix_expr = (primary_expr | compound_literal) ()* ("++" | "--")?
+ *
+ */
+Expr *postfix_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    Expr *curr = compound_literal(&tmp_tk_ptr);
+    if (!curr) {
+        curr = primary_expr(&tmp_tk_ptr);
+        if (!curr) return NULL;
+    }
+
+    while (tk_ty(&tmp_tk_ptr) == TK_LBRACE ||
+           tk_ty(&tmp_tk_ptr) == TK_LPAREN ||
+           tk_ty(&tmp_tk_ptr) == TK_DEREF ||
+           tk_ty(&tmp_tk_ptr) == TK_DOT)
+    {
+        Expr *new = malloc(sizeof(Expr));
+        new->l_operand = curr;
+        curr = new;
+
+        switch (tk_ty(&tmp_tk_ptr)) {
+            case TK_LBRACE:
+            {
+                next_tk(&tmp_tk_ptr);
+                Expr *index_expr = expr(&tmp_tk_ptr);
+                next_tk(&tmp_tk_ptr);
+                if (tk_ty(&tmp_tk_ptr) != TK_RBRACE) {
+                    return NULL;
+                }
+
+                // TODO: set operator
+                curr->r_operand = index_expr;
+
+                if (tk_ty(&tmp_tk_ptr) != TK_RBRACE) return NULL;
+                break;
+            }
+            case TK_LPAREN:
+            {
+                next_tk(&tmp_tk_ptr);
+                Expr *first_arg = arg_expr_list(&tmp_tk_ptr);
+
+                // TODO: set expr type
+                curr->func_invok = malloc(sizeof(FuncInvok));
+                curr->func_invok->first_arg = first_arg;
+
+                if (tk_ty(&tmp_tk_ptr) != TK_RPAREN) return NULL;
+            }
+            case TK_DEREF:
+            case TK_DOT:
+            {
+                next_tk(&tmp_tk_ptr);
+                if (tk_ty(&tmp_tk_ptr) != TK_ID) return NULL;
+
+                // TODO: set operator
+                Member *struct_members = curr->l_operand->ty->members;
+                curr->r_operand = malloc(sizeof(Expr));
+                curr->r_operand->var_ref = malloc(sizeof(VarRef));
+                curr->r_operand->var_ref->id = tmp_tk_ptr->text;
+
+                break;
+            }
+            default:
+                return NULL;
+        }
+    }
+
+    next_tk(&tmp_tk_ptr);
+
+    *curr_tk = tmp_tk_ptr;
+    return curr;
+}
+
+/* cast_expr = ("(" type_name ")")* unary_expr
  */
 Expr *cast_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
+
+
 
     *curr_tk = tmp_tk_ptr;
     return NULL;
@@ -238,7 +421,7 @@ Expr *assnt_expr(Token **curr_tk)
 
 /* exprs = assnt_expr ("," assnt_expr)*
  */
-Expr *exprs(Token **curr_tk, int *expr_cnt)
+Expr *exprs(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
@@ -263,12 +446,12 @@ Expr *exprs(Token **curr_tk, int *expr_cnt)
     return first_expr;
 }
 
-/* decl_specs = ( TK_TYPEDEF | TK_EXTERN | TK_STATIC | TK__THR_LOC
- *               | TK_AUTO | TK_REGISTER | TK_VOID | TK_CHAR
- *               | TK_SHORT | TK_INT | TK_LONG | TK_FLOAT | TK_DOUBLE
- *               | TK_SIGNED | TK_UNSIGNED | TK__BOOL | TK__COMPLEX
- *               | TK_CONST | TK_RESTRICT | TK_VOLATILE | TK__Atomic
- *               | TK_INLINE | TK__NORETURN
+/* decl_specs = ( TK_TYPEDEF | TK_EXTERN | TK_STATIC |
+ *               | TK_AUTO | TK_VOID | TK_CHAR | TK_SHORT
+ *               | TK_INT | TK_LONG | TK_FLOAT | TK_DOUBLE
+ *               | TK_SIGNED | TK_UNSIGNED | TK__BOOL
+ *               |  TK_CONST | TK_RESTRICT | TK_VOLATILE
+ *               | TK__Atomic | TK_INLINE | TK__NORETURN
  *               | atomic_type_spec
  *               | struct_or_union_spec
  *               | enum_spec
@@ -278,11 +461,11 @@ Expr *exprs(Token **curr_tk, int *expr_cnt)
  * NOTE: at most one storage_class_spec is allowed
  *     (EXCEPT: TK__THR_LOC with TK_STATIC OR TK_EXTERN)
  *
- * NOTE: TK__THR_LOC can't be used in func decls OR defs
- * NOTE: TK_STATIC, TK__THR_LOC, TK_AUTO, TK_REGISTER
+ * IGNORE: NOTE: TK__THR_LOC can't be used in func decls OR defs
+ * IGNORE: TK__THR_LOC, TK_AUTO, TK_REGISTER
  *     all carry recursively to members of struct or union
  */
-Type *decl_specs(Token **curr_tk, VarAttrs *attrs, bool is_func_decl)
+Type *decl_specs(Token **curr_tk, VarAttrs *attrs, bool is_func_def, bool is_param_decl)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
@@ -290,11 +473,13 @@ Type *decl_specs(Token **curr_tk, VarAttrs *attrs, bool is_func_decl)
     return NULL;
 }
 
+// TODO: check this out looks complicated
 /* pointers = '*' type_qualifier* pointers?
  */
 int pointers(Token **curr_tk, Type *ty, VarAttrs *attrs)
 {
     Token *tmp_tk_ptr = *curr_tk;
+
     int ptr_cnt;
     while (tk_ty(&tmp_tk_ptr) == TK_STAR) {
         next_tk(curr_tk);
@@ -335,7 +520,7 @@ Obj *param_decl(Token **curr_tk)
     Token *tmp_tk_ptr = *curr_tk;
 
     VarAttrs *attrs;
-    Type *ty = decl_specs(curr_tk, attrs, false);
+    Type *ty = decl_specs(curr_tk, attrs, false, true);
     Obj *var = malloc(sizeof(Obj));
     var->ty = ty;
     var->attrs = attrs;
@@ -536,6 +721,7 @@ void designation(Token **curr_tk)
 }
 
 /* init_list = designation? init ("," designation? init)*
+ * TODO: verify this grammar
  */
 void init_list(Token **curr_tk)
 {
