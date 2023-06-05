@@ -264,7 +264,7 @@ Expr *arg_expr_list(Token **curr_tk)
 /* postfix_expr = primary_expr
  *              | compound_literal
  *              | postfix_expr "[" expr "]"
- *              | postfix_expr "(" ( assnt_expr ("," assnt_expr)* )? ")"
+ *              | postfix_expr "(" arg_expr_list? ")"
  *              | postfix_expr ("." || "->") TK_ID
  *              | postfix_expr ("++" | "--")
  *
@@ -342,16 +342,7 @@ Expr *postfix_expr(Token **curr_tk)
     return curr;
 }
 
-/* cast_expr = ("(" type_name ")")* unary_expr
- */
-Expr *cast_expr(Token **curr_tk)
-{
-    Token *tmp_tk_ptr = *curr_tk;
-
-    *curr_tk = tmp_tk_ptr;
-    return NULL;
-}
-
+// TODO: this is tricky w/ unary_expr
 /* unary_expr = postfix_expr
  *            | ("++" | "--") unary_expr
  *            | ("&" | "*" | "+" | "-" | "~" | "!") cast_expr
@@ -359,6 +350,16 @@ Expr *cast_expr(Token **curr_tk)
  *            | (TK_SIZEOF | TK__ALIGNOF) "(" type_name ")"
  */
 Expr *unary_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* cast_expr = ("(" type_name ")")* unary_expr
+ */
+Expr *cast_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
@@ -396,7 +397,77 @@ Expr *shift_expr(Token **curr_tk)
     return NULL;
 }
 
-/* cond_expr = logical_or_expr ("?" exprs ":" cond_expr)?
+/* relation_expr = shift_expr (("<"|">"|"<="|">=") shift_expr)*
+ */
+Expr *relation_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* equality_expr = relational_expr (("==" | "!=") relational_expr)*
+ */
+Expr *equality_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* and_expr = equality_expr ("&" equality_expr)*
+ */
+Expr *and_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* exclusive_or_expr = and_expr ("^" and_expr)*
+ */
+Expr *exclusive_or_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* inclusive_or_expr = exclusive_or_expr ("|" exclusive_or_expr)*
+ */
+Expr *inclusive_or_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* land_expr = inclusive_or_expr ("&&" inclusive_or_expr)*
+ */
+Expr *land_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* lor_expr = land_expr ("||" land_expr)*
+ */
+Expr *lor_expr(Token **curr_tk)
+{
+    Token *tmp_tk_ptr = *curr_tk;
+
+    *curr_tk = tmp_tk_ptr;
+    return NULL;
+}
+
+/* cond_expr = lor_expr ("?" exprs ":" cond_expr)?
  */
 Expr *cond_expr(Token **curr_tk)
 {
