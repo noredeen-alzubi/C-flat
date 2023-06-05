@@ -30,10 +30,21 @@ Scope *scope_stack_head;
 
 // utils
 
+static void *safe_calloc(size_t n_items, size_t n_bytes)
+{
+    void *ptr = calloc(n_items, n_bytes);
+    if (!ptr) {
+        fprintf(stderr, "internal err: out of memeory");
+        exit(1);
+    }
+    return ptr;
+}
+
+
 inline Scope *new_scope()
 {
 
-    Scope *res = malloc(sizeof(Scope));
+    Scope *res = safe_calloc(1, sizeof(Scope));
     res->vars = NULL;
     return res;
 }
@@ -57,16 +68,6 @@ inline TokenType tk_ty(Token **curr_tk)
     }
 
     return (*curr_tk)->ty;
-}
-
-static void* safe_calloc(size_t n_items, size_t n_bytes)
-{
-    void *ptr = calloc(n_items, n_bytes);
-    if (!ptr) {
-        fprintf(stderr, "internal err: out of memeory");
-        exit(1);
-    }
-    return ptr;
 }
 
 // parsing
@@ -98,8 +99,8 @@ Expr *primary_expr(Token **curr_tk)
             //     top_scope = top_scope->next;
             // }
             // if (!ref) return NULL; // undefined var/func identifier
-            res = malloc(sizeof(Expr));
-            res->var_ref = malloc(sizeof(VarRef));
+            res = safe_calloc(1, sizeof(Expr));
+            res->var_ref = safe_calloc(1, sizeof(VarRef));
             // res->var_ref->var = ref;
             res->var_ref->id = tmp_tk_ptr->text;
             break;
@@ -108,7 +109,7 @@ Expr *primary_expr(Token **curr_tk)
             // TODO: create Obj and a VarRef to it
             break;
         case TK_NUM: case TK_CHAR:
-            res = malloc(sizeof(Expr));
+            res = safe_calloc(1, sizeof(Expr));
             res->val = tmp_tk_ptr->i_value;
             break;
         case TK_LPAREN:
@@ -198,7 +199,7 @@ Expr *compound_literal(Token **curr_tk)
 
     next_tk(&tmp_tk_ptr);
 
-    VarAttrs *attrs = malloc(sizeof(VarAttrs));
+    VarAttrs *attrs = safe_calloc(1, sizeof(VarAttrs));
     Type *ty = type_name(&tmp_tk_ptr, attrs);
 
     if (!ty) return NULL;
@@ -285,7 +286,7 @@ Expr *postfix_expr(Token **curr_tk)
            tk_ty(&tmp_tk_ptr) == TK_DEREF ||
            tk_ty(&tmp_tk_ptr) == TK_DOT)
     {
-        Expr *new = malloc(sizeof(Expr));
+        Expr *new = safe_calloc(1, sizeof(Expr));
         new->l_operand = curr;
         curr = new;
 
@@ -311,7 +312,7 @@ Expr *postfix_expr(Token **curr_tk)
                 Expr *first_arg = arg_expr_list(&tmp_tk_ptr);
 
                 // TODO: set expr type
-                curr->func_invok = malloc(sizeof(FuncInvok));
+                curr->func_invok = safe_calloc(1, sizeof(FuncInvok));
                 curr->func_invok->first_arg = first_arg;
 
                 if (tk_ty(&tmp_tk_ptr) != TK_RPAREN) return NULL;
@@ -324,8 +325,8 @@ Expr *postfix_expr(Token **curr_tk)
 
                 // TODO: set operator
                 Member *struct_members = curr->l_operand->ty->members;
-                curr->r_operand = malloc(sizeof(Expr));
-                curr->r_operand->var_ref = malloc(sizeof(VarRef));
+                curr->r_operand = safe_calloc(1, sizeof(Expr));
+                curr->r_operand->var_ref = safe_calloc(1, sizeof(VarRef));
                 curr->r_operand->var_ref->id = tmp_tk_ptr->text;
 
                 break;
@@ -346,8 +347,6 @@ Expr *postfix_expr(Token **curr_tk)
 Expr *cast_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
-
-
 
     *curr_tk = tmp_tk_ptr;
     return NULL;
@@ -397,7 +396,7 @@ Expr *shift_expr(Token **curr_tk)
     return NULL;
 }
 
-/* cond_expr = LOR_expr ("?" exprs ":" cond_expr)?
+/* cond_expr = logical_or_expr ("?" exprs ":" cond_expr)?
  */
 Expr *cond_expr(Token **curr_tk)
 {
@@ -521,7 +520,7 @@ Obj *param_decl(Token **curr_tk)
 
     VarAttrs *attrs;
     Type *ty = decl_specs(curr_tk, attrs, false, true);
-    Obj *var = malloc(sizeof(Obj));
+    Obj *var = safe_calloc(1, sizeof(Obj));
     var->ty = ty;
     var->attrs = attrs;
 
@@ -821,11 +820,11 @@ Obj *func_def(Token **curr_tk)
     Type *ret_ty = decl_specs(&tmp_tk_ptr, attrs, true);
     if (!ret_ty) {
         // TODO: don't make new Type objects for funcs with no explicit ret type
-        ret_ty = malloc(sizeof(Type));
+        ret_ty = safe_calloc(1, sizeof(Type));
         ret_ty->kind = TY_INT;
     }
 
-    Type *func_ty = malloc(sizeof(Type));
+    Type *func_ty = safe_calloc(1, sizeof(Type));
     func_ty->kind = TY_FUNC;
     func_ty->ret_ty = ret_ty;
 
