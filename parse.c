@@ -8,7 +8,6 @@
                            body \
                            *curr_tk = tmp_tk_ptr
 
-
 typedef struct Scope Scope;
 struct Scope {
     struct { char *key; Obj *value; } *vars; // symbol table
@@ -23,7 +22,7 @@ void direct_declarator(
     bool is_func_params,
     bool is_func_def_params
 );
-Expr *exprs(Token **curr_tk);
+Expr *expr(Token **curr_tk);
 Expr *assnt_expr(Token **curr_tk);
 
 Scope *scope_stack_head;
@@ -40,10 +39,8 @@ static void *safe_calloc(size_t n_items, size_t n_bytes)
     return ptr;
 }
 
-
 inline Scope *new_scope()
 {
-
     Scope *res = safe_calloc(1, sizeof(Scope));
     res->vars = NULL;
     return res;
@@ -76,7 +73,7 @@ inline TokenType tk_ty(Token **curr_tk)
  *              | TK_NUM
  *              | TK_CHAR
  *              | TK_STR
- *              | "(" exprs ")"
+ *              | "(" expr ")"
  * LATER        | generic_selection
  *
  * NOTE: generic_selection for preprocesser I think
@@ -114,7 +111,7 @@ Expr *primary_expr(Token **curr_tk)
             break;
         case TK_LPAREN:
             next_tk(&tmp_tk_ptr);
-            Expr *first_expr = exprs(&tmp_tk_ptr);
+            Expr *first_expr = expr(&tmp_tk_ptr);
             if (!first_expr) { return NULL; } /* problem: expected expressions */
             next_tk(&tmp_tk_ptr);
             if (tk_ty(&tmp_tk_ptr) != TK_RPAREN) return NULL;
@@ -191,9 +188,7 @@ Expr *compound_literal(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
-    Expr *result;
-
-    if (tk_ty(curr_tk) != TK_LPAREN) {
+    if (tk_ty(&tmp_tk_ptr) != TK_LPAREN) {
         return NULL;
     }
 
@@ -212,30 +207,10 @@ Expr *compound_literal(Token **curr_tk)
 
     // TODO: continue
 
-    *curr_tk = tmp_tk_ptr;
-    return NULL;
-}
-
-/* expr = assnt_expr ("," assnt_expr)*
- */
-Expr *expr(Token **curr_tk)
-{
-    Token *tmp_tk_ptr = *curr_tk;
-
-    Expr *first = assnt_expr(&tmp_tk_ptr);
-    if (!first) return NULL;
-
-    Expr *curr = first;
-    while (tk_ty(&tmp_tk_ptr) == TK_COMMA) {
-        next_tk(&tmp_tk_ptr);
-        Expr *next = assnt_expr(&tmp_tk_ptr);
-        if (!next) return NULL;
-        curr->next = next;
-        curr = next;
-    }
+    Expr *result = NULL;
 
     *curr_tk = tmp_tk_ptr;
-    return first;
+    return result;
 }
 
 /* arg_expr_list = assnt_expr ("," assnt_expr)*
@@ -258,9 +233,10 @@ Expr *arg_expr_list(Token **curr_tk)
     }
 
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return first;
 }
 
+// TODO: gotta test this thoroughly
 /* postfix_expr = primary_expr
  *              | compound_literal
  *              | postfix_expr "[" expr "]"
@@ -269,7 +245,6 @@ Expr *arg_expr_list(Token **curr_tk)
  *              | postfix_expr ("++" | "--")
  *
  * postfix_expr = (primary_expr | compound_literal) ()* ("++" | "--")?
- *
  */
 Expr *postfix_expr(Token **curr_tk)
 {
@@ -287,7 +262,7 @@ Expr *postfix_expr(Token **curr_tk)
            tk_ty(&tmp_tk_ptr) == TK_DOT)
     {
         Expr *new = safe_calloc(1, sizeof(Expr));
-        new->l_operand = curr;
+        new->first_operand = curr;
         curr = new;
 
         switch (tk_ty(&tmp_tk_ptr)) {
@@ -301,7 +276,7 @@ Expr *postfix_expr(Token **curr_tk)
                 }
 
                 // TODO: set operator
-                curr->r_operand = index_expr;
+                curr->second_operand = index_expr;
 
                 if (tk_ty(&tmp_tk_ptr) != TK_RBRACE) return NULL;
                 break;
@@ -310,12 +285,12 @@ Expr *postfix_expr(Token **curr_tk)
             {
                 next_tk(&tmp_tk_ptr);
                 Expr *first_arg = arg_expr_list(&tmp_tk_ptr);
+                if (tk_ty(&tmp_tk_ptr) != TK_RPAREN) return NULL;
 
                 // TODO: set expr type
                 curr->func_invok = safe_calloc(1, sizeof(FuncInvok));
                 curr->func_invok->first_arg = first_arg;
 
-                if (tk_ty(&tmp_tk_ptr) != TK_RPAREN) return NULL;
             }
             case TK_DEREF:
             case TK_DOT:
@@ -324,10 +299,10 @@ Expr *postfix_expr(Token **curr_tk)
                 if (tk_ty(&tmp_tk_ptr) != TK_ID) return NULL;
 
                 // TODO: set operator
-                Member *struct_members = curr->l_operand->ty->members;
-                curr->r_operand = safe_calloc(1, sizeof(Expr));
-                curr->r_operand->var_ref = safe_calloc(1, sizeof(VarRef));
-                curr->r_operand->var_ref->id = tmp_tk_ptr->text;
+                Member *struct_members = curr->first_operand->ret_ty->members;
+                curr->second_operand = safe_calloc(1, sizeof(Expr));
+                curr->second_operand->var_ref = safe_calloc(1, sizeof(VarRef));
+                curr->second_operand->var_ref->id = tmp_tk_ptr->text;
 
                 break;
             }
@@ -357,51 +332,158 @@ Expr *unary_expr(Token **curr_tk)
     return NULL;
 }
 
-/* cast_expr = ("(" type_name ")")* unary_expr
+/* cast_expr = unary_expr
+ *           | "(" type_name ")" cast_expr
  */
 Expr *cast_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    if (tk_ty(&tmp_tk_ptr) == TK_LPAREN) {
+        next_tk(&tmp_tk_ptr);
+        VarAttrs *attrs = safe_calloc(1, sizeof(VarAttrs));
+        Type *ty = type_name(&tmp_tk_ptr, attrs);
+        if (!ty) return NULL;
+
+        Expr *expr = cast_expr(&tmp_tk_ptr);
+        if (!expr) return NULL;
+
+        Expr *result = safe_calloc(1, sizeof(Expr));
+        result->first_operand = expr;
+        result->cast_type = ty;
+        result->cast_attrs = attrs;
+        result->ty = E_CAST;
+        return result;
+    }
+
+    Expr *result = unary_expr(&tmp_tk_ptr);
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
-/* mul_expr = cast_expr (("*" | "/" | "%") cast_expr)*
+/* mul_expr = cast_expr
+ *          | ("*" | "/" | "%") mul_expr
  */
 Expr *mul_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = mul_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    TokenType tkn_ty = tk_ty(&tmp_tk_ptr);
+    if (tkn_ty != TK_STAR &&
+        tkn_ty != TK_SLASH &&
+        tkn_ty != TK_PCT) {
+        return left;
+    }
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = mul_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = tk_ty(&tmp_tk_ptr) == TK_PLUS ? E_PLUS : E_MINUS;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
-/* add_expr = mul_expr (("+" | "-") mul_expr)*
+/* add_expr = mul_expr
+ *          | ("+" | "-") add_expr
  */
 Expr *add_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = mul_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_PLUS && tk_ty(&tmp_tk_ptr) != TK_MINUS) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = add_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = tk_ty(&tmp_tk_ptr) == TK_PLUS ? E_PLUS : E_MINUS;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
-/* shift_expr = add_expr (("<<" | ">>") add_expr)*
+/* shift_expr = add_expr
+ *            | ("<<" | ">>") shift_expr
  */
 Expr *shift_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = add_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_LSHFT && tk_ty(&tmp_tk_ptr) != TK_RSHFT) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = shift_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = tk_ty(&tmp_tk_ptr) == TK_LSHFT ? E_LSHFT : E_RSHFT;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
-/* relation_expr = shift_expr (("<"|">"|"<="|">=") shift_expr)*
+/* relational_expr = shift_expr
+ *                 | ("<"|">"|"<="|">=") relational_expr
  */
-Expr *relation_expr(Token **curr_tk)
+Expr *relational_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
+
+    Expr *left = shift_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    TokenType tkn_ty = tk_ty(&tmp_tk_ptr);
+    ExprType e_ty;
+    switch (tkn_ty) {
+        case TK_LEQ:
+            e_ty = E_LEQ;
+            break;
+        case TK_GEQ:
+            e_ty = E_GEQ;
+            break;
+        case TK_GT:
+            e_ty = E_GT;
+            break;
+        case TK_LT:
+            e_ty = E_LT;
+            break;
+        default:
+            e_ty = E_NULL;
+    }
+    if (e_ty == E_NULL) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = relational_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = e_ty;
 
     *curr_tk = tmp_tk_ptr;
     return NULL;
@@ -413,8 +495,23 @@ Expr *equality_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = shift_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_EQEQ && tk_ty(&tmp_tk_ptr) != TK_NEQ) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = relational_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = tk_ty(&tmp_tk_ptr) == TK_EQEQ ? E_EQEQ : E_NEQ;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
 /* and_expr = equality_expr ("&" equality_expr)*
@@ -423,8 +520,23 @@ Expr *and_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = equality_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_BXOR) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = and_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = E_BXOR;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
 /* exclusive_or_expr = and_expr ("^" and_expr)*
@@ -433,8 +545,23 @@ Expr *exclusive_or_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = and_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_BXOR) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = exclusive_or_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = E_BXOR;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
 /* inclusive_or_expr = exclusive_or_expr ("|" exclusive_or_expr)*
@@ -443,8 +570,23 @@ Expr *inclusive_or_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = exclusive_or_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_BIOR) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = inclusive_or_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = E_BIOR;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
 /* land_expr = inclusive_or_expr ("&&" inclusive_or_expr)*
@@ -453,28 +595,84 @@ Expr *land_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = inclusive_or_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_LAND) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = land_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = E_LAND;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
-/* lor_expr = land_expr ("||" land_expr)*
+// (X) || (Y && Z) || (B && H) || (V)
+/* lor_expr = land_expr
+ *          | lor_expr "||" land_expr
  */
 Expr *lor_expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *left = land_expr(&tmp_tk_ptr);
+    if (!left) return NULL;
+
+    next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_LOR) return left;
+
+    next_tk(&tmp_tk_ptr);
+    Expr* right = lor_expr(&tmp_tk_ptr);
+    if (!right) return NULL;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = left;
+    result->second_operand = right;
+    result->ty = E_LOR;
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
-/* cond_expr = lor_expr ("?" exprs ":" cond_expr)?
+/* cond_expr = lor_expr ("?" expr ":" cond_expr)?
  */
 Expr *cond_expr(Token **curr_tk)
 {
+    int x = 0;
     Token *tmp_tk_ptr = *curr_tk;
 
+    Expr *result = lor_expr(&tmp_tk_ptr);
+    if (!result) return NULL;
+
+    if (tk_ty(&tmp_tk_ptr) == TK_TERNARY) {
+        next_tk(&tmp_tk_ptr);
+        Expr *true_expr = expr(&tmp_tk_ptr);
+        if (!true_expr) return NULL;
+
+        next_tk(&tmp_tk_ptr);
+        if (tk_ty(&tmp_tk_ptr) != TK_COMMA) return NULL;
+
+        next_tk(&tmp_tk_ptr);
+        Expr *false_expr = cond_expr(&tmp_tk_ptr);
+        if (!false_expr) return NULL;
+
+        Expr *test_expr = result;
+        result = safe_calloc(1, sizeof(Expr));
+        result->first_operand = test_expr;
+        result->second_operand = true_expr;
+        result->third_operand = false_expr;
+        result->ty = E_TERNARY;
+    }
+
     *curr_tk = tmp_tk_ptr;
-    return NULL;
+    return result;
 }
 
 /* assnt_expr = cond_expr
@@ -489,31 +687,35 @@ Expr *assnt_expr(Token **curr_tk)
     return NULL;
 }
 
-/* exprs = assnt_expr ("," assnt_expr)*
+// TODO: iterative or recursive? idk
+/* expr = assnt_expr ("," assnt_expr)*
  */
-Expr *exprs(Token **curr_tk)
+Expr *expr(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
     Expr *first_expr = assnt_expr(&tmp_tk_ptr);
-    if (!first_expr) {
-        return NULL;
-    }
+    if (!first_expr) return NULL;
 
     next_tk(&tmp_tk_ptr);
+    if (tk_ty(&tmp_tk_ptr) != TK_COMMA) return first_expr;
+
+    Expr *result = safe_calloc(1, sizeof(Expr));
+    result->first_operand = first_expr;
+    result->ty = E_MULTI_EXPR;
+
     Expr *curr_expr = first_expr;
     while (tk_ty(&tmp_tk_ptr) == TK_COMMA) {
         next_tk(&tmp_tk_ptr);
         Expr *expr = assnt_expr(&tmp_tk_ptr);
-        if (!expr) {
-            return NULL;
-        }
+        if (!expr) return NULL;
+
         curr_expr->next = expr;
         curr_expr = expr;
     }
 
     *curr_tk = tmp_tk_ptr;
-    return first_expr;
+    return result;
 }
 
 /* decl_specs = ( TK_TYPEDEF | TK_EXTERN | TK_STATIC |

@@ -36,11 +36,22 @@
 // IMPORTANT: multi-char punctuators come first in the list
 #define FOREACH_PUNCTUATOR_TYPE(PUNCTUATOR_TYPE)        \
         PUNCTUATOR_TYPE(TK_DEREF, "->")                 \
-        PUNCTUATOR_TYPE(TK_LNOTEQ, "!=")                \
+        PUNCTUATOR_TYPE(TK_NEQ, "!=")                   \
+        PUNCTUATOR_TYPE(TK_EQEQ, "==")                  \
         PUNCTUATOR_TYPE(TK_INC, "+=")                   \
         PUNCTUATOR_TYPE(TK_DEC, "-=")                   \
         PUNCTUATOR_TYPE(TK_INC_ONE, "++")               \
         PUNCTUATOR_TYPE(TK_DEC_ONE, "--")               \
+        PUNCTUATOR_TYPE(TK_LOR, "||")                   \
+        PUNCTUATOR_TYPE(TK_LAND, "&&")                  \
+        PUNCTUATOR_TYPE(TK_LEQ, "<=")                   \
+        PUNCTUATOR_TYPE(TK_GEQ, ">=")                   \
+        PUNCTUATOR_TYPE(TK_LSHFT, "<<")                 \
+        PUNCTUATOR_TYPE(TK_RSHFT, ">>")                 \
+        PUNCTUATOR_TYPE(TK_LT, "<")                     \
+        PUNCTUATOR_TYPE(TK_GT, ">")                     \
+        PUNCTUATOR_TYPE(TK_BIOR, "|")                   \
+        PUNCTUATOR_TYPE(TK_BXOR, "^")                   \
         PUNCTUATOR_TYPE(TK_SEMICOLON, ";")              \
         PUNCTUATOR_TYPE(TK_LPAREN, "(")                 \
         PUNCTUATOR_TYPE(TK_RPAREN, ")")                 \
@@ -49,16 +60,19 @@
         PUNCTUATOR_TYPE(TK_LBRACKET, "[")               \
         PUNCTUATOR_TYPE(TK_RBRACKET, "]")               \
         PUNCTUATOR_TYPE(TK_DOT, ".")                    \
-        PUNCTUATOR_TYPE(TK_COMMA, ",")                    \
+        PUNCTUATOR_TYPE(TK_COMMA, ",")                  \
         PUNCTUATOR_TYPE(TK_ADDR, "&")                   \
         PUNCTUATOR_TYPE(TK_STAR, "*")                   \
+        PUNCTUATOR_TYPE(TK_SLASH, "/")                   \
+        PUNCTUATOR_TYPE(TK_PCT, "%")                   \
         PUNCTUATOR_TYPE(TK_PLUS, "+")                   \
         PUNCTUATOR_TYPE(TK_EQ, "=")                     \
         PUNCTUATOR_TYPE(TK_MINUS, "-")                  \
         PUNCTUATOR_TYPE(TK_BNOT, "~")                   \
         PUNCTUATOR_TYPE(TK_LNOT, "!")                   \
+        PUNCTUATOR_TYPE(TK_TERNARY, "?")                \
 
-#define PUNCTUATOR_TYPE_COUNT 22
+#define PUNCTUATOR_TYPE_COUNT 34
 
 // TODO: get rid of this
 #define ALPHABET_SIZE 128
@@ -160,6 +174,38 @@ struct VarAttrs {
 
 typedef enum { BI_BIS, BI_VAR, BI_EXPR, BI_COND, BI_ITER, BI_JMP } BlockItemType;
 typedef enum { JMP_GOTO, JMP_CONT, JMP_BREAK, JMP_RET } JumpType;
+typedef enum {
+    E_INDEX,
+    E_STRUCT_ACC,
+    E_STRUCT_DEREF_ACC,
+    E_INC,
+    E_DEC,
+    E_ADDR,
+    E_DEREF,
+    E_ADD,
+    E_SUB,
+    E_BNOT,
+    E_NOT,
+    E_LOR,
+    E_BIOR,
+    E_BXOR,
+    E_LAND,
+    E_BAND,
+    E_TERNARY,
+    E_MULTI_EXPR,
+    E_NEQ,
+    E_EQEQ,
+    E_LT,
+    E_GT,
+    E_LEQ,
+    E_GEQ,
+    E_LSHFT,
+    E_RSHFT,
+    E_PLUS,
+    E_MINUS,
+    E_CAST,
+    E_NULL // this is a stupid hack
+} ExprType;
 
 typedef struct BlockItem BlockItem;
 typedef struct Obj Obj;
@@ -203,10 +249,13 @@ struct FuncInvok {
 };
 
 struct Expr {
-    Type *ty;
+    Type *ret_ty;
+    ExprType ty;
+
     // TODO: what happens with alignments in exprs??
-    Expr *l_operand;
-    Expr *r_operand;
+    Expr *first_operand;
+    Expr *second_operand;
+    Expr *third_operand;
 
     VarRef *var_ref; // str literals are put in compiler-generated variables
     FuncInvok *func_invok;
