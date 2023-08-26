@@ -489,7 +489,8 @@ Expr *relational_expr(Token **curr_tk)
     return NULL;
 }
 
-/* equality_expr = relational_expr (("==" | "!=") relational_expr)*
+/* equality_expr = relational_expr
+ *               | ("==" | "!=") equality_expr
  */
 Expr *equality_expr(Token **curr_tk)
 {
@@ -514,7 +515,8 @@ Expr *equality_expr(Token **curr_tk)
     return result;
 }
 
-/* and_expr = equality_expr ("&" equality_expr)*
+/* and_expr = equality_expr
+ *          | "&" and_expr
  */
 Expr *and_expr(Token **curr_tk)
 {
@@ -539,7 +541,8 @@ Expr *and_expr(Token **curr_tk)
     return result;
 }
 
-/* exclusive_or_expr = and_expr ("^" and_expr)*
+/* exclusive_or_expr = and_expr
+ *                   | "^" exclusive_or_expr
  */
 Expr *exclusive_or_expr(Token **curr_tk)
 {
@@ -564,7 +567,8 @@ Expr *exclusive_or_expr(Token **curr_tk)
     return result;
 }
 
-/* inclusive_or_expr = exclusive_or_expr ("|" exclusive_or_expr)*
+/* inclusive_or_expr = exclusive_or_expr
+ *                   | "|" inclusive_or_expr
  */
 Expr *inclusive_or_expr(Token **curr_tk)
 {
@@ -589,7 +593,8 @@ Expr *inclusive_or_expr(Token **curr_tk)
     return result;
 }
 
-/* land_expr = inclusive_or_expr ("&&" inclusive_or_expr)*
+/* land_expr = inclusive_or_expr
+ *           | "&&" land_expr
  */
 Expr *land_expr(Token **curr_tk)
 {
@@ -614,7 +619,6 @@ Expr *land_expr(Token **curr_tk)
     return result;
 }
 
-// (X) || (Y && Z) || (B && H) || (V)
 /* lor_expr = land_expr
  *          | lor_expr "||" land_expr
  */
@@ -1037,10 +1041,10 @@ Obj *init_declarator_list(Token **curr_tk, int *var_cnt, Type *ty, VarAttrs *att
     return NULL;
 }
 
-/* var_decl = decl_specs init_declarator_list? ;
- *      | static_assert_decl
+/* decl = decl_specs init_declarator_list? ;
+ *          | static_assert_decl
  */
-Obj *var_decl(Token **curr_tk)
+Obj *decl(Token **curr_tk)
 {
     Token *tmp_tk_ptr = *curr_tk;
 
@@ -1080,7 +1084,7 @@ BlockItem *compound_stmt(Token **curr_tk)
     return NULL;
 }
 
-/* func_def = decl_specs? func_declarator var_decl* compound_stmt
+/* func_def = decl_specs? func_declarator decl* compound_stmt
  *
  * NOTE: the decl* is legacy--no idea what to do with it
  * NOTE: extra care and checks needed--grammar not sufficient to parse
@@ -1090,9 +1094,10 @@ Obj *func_def(Token **curr_tk)
     Token *tmp_tk_ptr = *curr_tk;
 
     VarAttrs *attrs;
-    Type *ret_ty = decl_specs(&tmp_tk_ptr, attrs, true);
+    Type *ret_ty = decl_specs(&tmp_tk_ptr, attrs, true, false);
     if (!ret_ty) {
         // TODO: don't make new Type objects for funcs with no explicit ret type
+        //       --> make one global Type object and point to it
         ret_ty = safe_calloc(1, sizeof(Type));
         ret_ty->kind = TY_INT;
     }
@@ -1105,7 +1110,7 @@ Obj *func_def(Token **curr_tk)
 
     // after this point it's a func definition and not a declaration
 
-    while (var_decl(&tmp_tk_ptr)); // consume but ignore (unsupported)
+    while (decl(&tmp_tk_ptr)); // consume but ignore (unsupported)
 
     BlockItem *block_items = compound_stmt(&tmp_tk_ptr);
 
